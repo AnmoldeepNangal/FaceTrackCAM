@@ -1541,8 +1541,7 @@ final class CameraTracker:
                     ) * height
 
                 // ------------------------------------------------
-                // IMPORTANT:
-                // Preserve camera aspect ratio.
+                // Preserve camera aspect ratio
                 // ------------------------------------------------
 
                 let aspect =
@@ -1552,7 +1551,6 @@ final class CameraTracker:
                     currentFaceRect.width *
                     width
 
-                // zoomIntensity 1...4
                 let desiredWidth =
                     faceWidth *
                     max(
@@ -1687,9 +1685,13 @@ final class CameraTracker:
         // Remove dead connections
         // --------------------------------------------------------
 
-        connections.removeAll {
-            $0.state == .cancelled ||
-            $0.state == .failed
+        connections.removeAll { connection in
+            switch connection.state {
+            case .cancelled, .failed:
+                return true
+            default:
+                return false
+            }
         }
 
         // --------------------------------------------------------
@@ -1712,70 +1714,68 @@ final class CameraTracker:
     // MARK: - WIFI ADDRESS
     // ============================================================
 
-func getWiFiAddress() -> String {
-    var address = "Not Connected"
+    func getWiFiAddress() -> String {
+        var address = "Not Connected"
 
-    var interfaceAddress: UnsafeMutablePointer<ifaddrs>?
+        var interfaceAddress: UnsafeMutablePointer<ifaddrs>?
 
-    guard getifaddrs(&interfaceAddress) == 0 else {
-        return address
-    }
-
-    var pointer = interfaceAddress
-
-    while pointer != nil {
-
-        guard let interface = pointer?.pointee else {
-            break
+        guard getifaddrs(&interfaceAddress) == 0 else {
+            return address
         }
 
-        defer {
-            pointer = interface.ifa_next
-        }
+        var pointer = interfaceAddress
 
-        guard let addr = interface.ifa_addr else {
-            continue
-        }
+        while pointer != nil {
 
-        if addr.pointee.sa_family == UInt8(AF_INET) {
+            guard let interface = pointer?.pointee else {
+                break
+            }
 
-            let interfaceName = String(
-                cString: interface.ifa_name
-            )
+            defer {
+                pointer = interface.ifa_next
+            }
 
-            if interfaceName == "en0" {
+            guard let addr = interface.ifa_addr else {
+                continue
+            }
 
-                var hostname = [CChar](
-                    repeating: 0,
-                    count: Int(NI_MAXHOST)
+            if addr.pointee.sa_family == UInt8(AF_INET) {
+
+                let interfaceName = String(
+                    cString: interface.ifa_name
                 )
 
-                let result = getnameinfo(
-                    addr,
-                    socklen_t(addr.pointee.sa_len),
-                    &hostname,
-                    socklen_t(hostname.count),
-                    nil,
-                    0,
-                    NI_NUMERICHOST
-                )
+                if interfaceName == "en0" {
 
-                if result == 0 {
-
-                    let ipAddress = String(
-                        cString: hostname
+                    var hostname = [CChar](
+                        repeating: 0,
+                        count: Int(NI_MAXHOST)
                     )
 
-                    address = "http://\(ipAddress):8080"
+                    let result = getnameinfo(
+                        addr,
+                        socklen_t(addr.pointee.sa_len),
+                        &hostname,
+                        socklen_t(hostname.count),
+                        nil,
+                        0,
+                        NI_NUMERICHOST
+                    )
+
+                    if result == 0 {
+
+                        let ipAddress = String(
+                            cString: hostname
+                        )
+
+                        address = "http://\(ipAddress):8080"
+                    }
                 }
             }
         }
+
+        freeifaddrs(interfaceAddress)
+
+        return address
     }
-
-    freeifaddrs(interfaceAddress)
-
-    return address
-}  
-}      
-        
-
+}
