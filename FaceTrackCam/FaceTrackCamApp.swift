@@ -51,82 +51,10 @@ struct ContentView: View {
 
             ZStack {
 
-                // ====================================================
-                // CAMERA LAYER
-                // ====================================================
-
                 Color.black
                     .ignoresSafeArea()
 
-                if let frame = camera.currentFrame {
-
-                    Image(
-                        decorative: frame,
-                        scale: 1.0,
-                        orientation: .up
-                    )
-                    .resizable()
-                    .scaledToFill()
-                    .frame(
-                        width: geometry.size.width,
-                        height: geometry.size.height
-                    )
-                    .clipped()
-                    .ignoresSafeArea()
-
-                } else {
-
-                    ZStack {
-                        Color.black
-
-                        ProgressView()
-                            .progressViewStyle(
-                                CircularProgressViewStyle(tint: .white)
-                            )
-                    }
-                    .ignoresSafeArea()
-                }
-
-                // ====================================================
-                // TOP UI
-                // ====================================================
-
-                if !isBlackoutMode {
-
-                    VStack(spacing: 0) {
-
-                        topControls
-                            .padding(.top, geometry.safeAreaInsets.top + 8)
-
-                        Spacer()
-                    }
-                    .frame(
-                        width: geometry.size.width,
-                        height: geometry.size.height
-                    )
-                    .ignoresSafeArea()
-
-                    // ====================================================
-                    // BOTTOM UI
-                    // ====================================================
-
-                    VStack(spacing: 0) {
-
-                        Spacer()
-
-                        bottomControls
-                            .padding(
-                                .bottom,
-                                geometry.safeAreaInsets.bottom
-                            )
-                    }
-                    .frame(
-                        width: geometry.size.width,
-                        height: geometry.size.height
-                    )
-                    .ignoresSafeArea()
-
-                } else {
+                if isBlackoutMode {
 
                     // ====================================================
                     // BLACKOUT MODE
@@ -158,6 +86,63 @@ struct ContentView: View {
                             .font(.system(size: 13))
                             .foregroundColor(.gray.opacity(0.7))
                     }
+
+                } else {
+
+                    // ====================================================
+                    // DEDICATED CAMERA + LETTERBOX CONTROLS
+                    // ====================================================
+
+                    VStack(spacing: 0) {
+
+                        // TOP BAR (In top black letterbox band)
+                        topControls
+                            .padding(.top, geometry.safeAreaInsets.top + 6)
+                            .padding(.bottom, 6)
+                            .frame(maxWidth: .infinity)
+                            .background(Color.black)
+
+                        Spacer(minLength: 0)
+
+                        // CAMERA PREVIEW (Preserved aspect ratio, completely unblocked)
+                        if let frame = camera.currentFrame {
+
+                            Image(
+                                decorative: frame,
+                                scale: 1.0,
+                                orientation: .up
+                            )
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(maxWidth: geometry.size.width)
+                            .clipped()
+
+                        } else {
+
+                            Color.black
+                                .aspectRatio(9/16, contentMode: .fit)
+                                .overlay(
+                                    ProgressView()
+                                        .progressViewStyle(
+                                            CircularProgressViewStyle(tint: .white)
+                                        )
+                                )
+                        }
+
+                        Spacer(minLength: 0)
+
+                        // BOTTOM CONTROLS (In bottom black letterbox band)
+                        bottomControls
+                            .padding(
+                                .bottom,
+                                geometry.safeAreaInsets.bottom > 0
+                                ? geometry.safeAreaInsets.bottom
+                                : 10
+                            )
+                            .frame(maxWidth: .infinity)
+                            .background(Color.black)
+                    }
+                    .ignoresSafeArea()
                 }
             }
         }
@@ -245,7 +230,7 @@ struct ContentView: View {
                         height: 42
                     )
                     .background(
-                        Color.black.opacity(0.50)
+                        Color.white.opacity(0.15)
                     )
                     .clipShape(Circle())
             }
@@ -259,7 +244,7 @@ struct ContentView: View {
 
     private var bottomControls: some View {
 
-        VStack(spacing: 15) {
+        VStack(spacing: 12) {
 
             // ========================================================
             // ZOOM
@@ -334,7 +319,7 @@ struct ContentView: View {
                             .frame(
                                 maxWidth: .infinity
                             )
-                            .frame(height: 40)
+                            .frame(height: 38)
                             .background(
                                 camera.backgroundMode == mode
                                 ? Color.yellow
@@ -374,7 +359,7 @@ struct ContentView: View {
                         )
                         .frame(
                             width: 44,
-                            height: 40
+                            height: 38
                         )
                         .background(
                             Color.white.opacity(0.13)
@@ -450,17 +435,17 @@ struct ContentView: View {
                     )
                     .foregroundColor(.white)
                     .frame(
-                        width: 58,
-                        height: 58
+                        width: 54,
+                        height: 54
                     )
                     .background(
-                        Color.black.opacity(0.60)
+                        Color.white.opacity(0.12)
                     )
                     .clipShape(Circle())
                     .overlay(
                         Circle()
                             .stroke(
-                                Color.white.opacity(0.15),
+                                Color.white.opacity(0.20),
                                 lineWidth: 1
                             )
                     )
@@ -502,7 +487,7 @@ struct ContentView: View {
                     )
                     .font(
                         .system(
-                            size: 27,
+                            size: 26,
                             weight: .medium
                         )
                     )
@@ -512,20 +497,20 @@ struct ContentView: View {
                         : .white
                     )
                     .frame(
-                        width: 76,
-                        height: 76
+                        width: 70,
+                        height: 70
                     )
                     .background(
                         camera.isFaceTrackingEnabled
                         ? Color.yellow
-                        : Color.black.opacity(0.60)
+                        : Color.white.opacity(0.15)
                     )
                     .clipShape(Circle())
                     .overlay(
                         Circle()
                             .stroke(
                                 Color.white,
-                                lineWidth: 3
+                                lineWidth: 2.5
                             )
                     )
                     .shadow(
@@ -569,17 +554,17 @@ struct ContentView: View {
                         : .white
                     )
                     .frame(
-                        width: 58,
-                        height: 58
+                        width: 54,
+                        height: 54
                     )
                     .background(
-                        Color.black.opacity(0.60)
+                        Color.white.opacity(0.12)
                     )
                     .clipShape(Circle())
                     .overlay(
                         Circle()
                             .stroke(
-                                Color.white.opacity(0.15),
+                                Color.white.opacity(0.20),
                                 lineWidth: 1
                             )
                     )
@@ -594,22 +579,10 @@ struct ContentView: View {
                 }
             }
             .padding(.horizontal, 28)
-            .padding(.bottom, 12)
+            .padding(.top, 4)
+            .padding(.bottom, 6)
         }
-        .padding(.top, 18)
-        .background(
-            LinearGradient(
-                gradient: Gradient(
-                    colors: [
-                        Color.black.opacity(0.0),
-                        Color.black.opacity(0.25),
-                        Color.black.opacity(0.80)
-                    ]
-                ),
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        )
+        .padding(.top, 10)
     }
 
     // ============================================================
@@ -1054,7 +1027,6 @@ final class CameraTracker:
             self.availableCameras =
                 devices
 
-            // Prefer front camera
             if let front =
                 devices.first(
                     where: {
