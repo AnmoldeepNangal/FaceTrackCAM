@@ -33,7 +33,6 @@ struct ContentView: View {
             Color.black.ignoresSafeArea()
 
             if isBlackoutMode {
-                // 1. OLED Screen Dimmer / Anti-Burn-In
                 Color.black.ignoresSafeArea()
                     .overlay(
                         Text("BLACKOUT MODE ACTIVE\nCamera & Server Running\nTap anywhere to wake")
@@ -46,7 +45,6 @@ struct ContentView: View {
                         UIScreen.main.brightness = previousBrightness
                     }
             } else {
-                // 2. Camera Video Feed
                 if let frame = camera.currentFrame {
                     Image(decorative: frame, scale: 1.0, orientation: .up)
                         .resizable()
@@ -57,7 +55,6 @@ struct ContentView: View {
                         .foregroundColor(.white)
                 }
 
-                // 3. Status & HUD Overlay (Top)
                 VStack {
                     HStack {
                         HStack(spacing: 12) {
@@ -96,12 +93,10 @@ struct ContentView: View {
                     Spacer()
                 }
 
-                // 4. User Interface Overlay (Bottom Controls)
                 VStack {
                     Spacer()
 
                     VStack(spacing: 15) {
-                        // Zoom Intensity Slider
                         HStack {
                             Text("Zoom")
                                 .foregroundColor(.white)
@@ -112,7 +107,6 @@ struct ContentView: View {
                         .padding(.horizontal)
 
                         HStack(spacing: 10) {
-                            // Lens Selector
                             Picker("Lens", selection: $camera.selectedCameraID) {
                                 ForEach(camera.availableCameras, id: \.uniqueID) { cam in
                                     Text(cam.localizedName).tag(cam.uniqueID)
@@ -126,88 +120,52 @@ struct ContentView: View {
                                 camera.switchCamera(cameraID: newID)
                             }
 
-                            // Background Mode Selector (replaces old Blur toggle)
-                            Picker("Background", selection: $camera.backgroundMode) {
-                                ForEach(BackgroundMode.allCases, id: \.self) { mode in
-                                    Text(mode.rawValue).tag(mode)
+                            HStack(spacing: 6) {
+                                Picker("Background", selection: $camera.backgroundMode) {
+                                    ForEach(BackgroundMode.allCases, id: \.self) { mode in
+                                        Text(mode.rawValue).tag(mode)
+                                    }
+                                }
+                                .pickerStyle(SegmentedPickerStyle())
+                                .frame(width: 200)
+
+                                if camera.backgroundMode == .custom {
+                                    PhotosPicker(selection: $backgroundPickerItem, matching: .images) {
+                                        Image(systemName: camera.hasCustomBackground ? "photo.fill" : "photo.badge.plus")
+                                            .foregroundColor(.white)
+                                    }
+                                    .onChange(of: backgroundPickerItem) { _, newItem in
+                                        guard let item = newItem else { return }
+                                        Task {
+                                            if let data = try? await item.loadTransferable(type: Data.self),
+                                               let uiImage = UIImage(data: data) {
+                                                camera.setCustomBackground(uiImage: uiImage)
+                                            }
+                                        }
+                                    }
                                 }
                             }
-                            .pickerStyle(SegmentedPickerStyle())
-                            .frame(width: 200)
                             .padding(10)
                             .background(Color.black.opacity(0.7))
                             .cornerRadius(8)
                         }
 
-                        // Saved-backgrounds gallery: pick an existing one, add a new one, or delete.
-                        if camera.backgroundMode == .custom {
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 8) {
-                                    ForEach(camera.savedBackgrounds) { bg in
-                                        ZStack(alignment: .topTrailing) {
-                                            if let thumb = bg.thumbnail {
-                                                Image(uiImage: thumb)
-                                                    .resizable()
-                                                    .scaledToFill()
-                                                    .frame(width: 48, height: 48)
-                                                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                                                    .overlay(
-                                                        RoundedRectangle(cornerRadius: 6)
-                                                            .stroke(camera.selectedBackgroundID == bg.id ? Color.green : Color.clear, lineWidth: 2)
-                                                    )
-                                                    .onTapGesture {
-                                                        camera.selectSavedBackground(id: bg.id)
-                                                    }
-                                            }
-                                            Button(action: { camera.deleteBackground(id: bg.id) }) {
-                                                Image(systemName: "xmark.circle.fill")
-                                                    .font(.system(size: 14))
-                                                    .foregroundColor(.white)
-                                                    .background(Circle().fill(Color.black.opacity(0.7)))
-                                            }
-                                            .offset(x: 5, y: -5)
-                                        }
-                                    }
-
-                                    PhotosPicker(selection: $backgroundPickerItem, matching: .images) {
-                                        Image(systemName: "plus")
-                                            .foregroundColor(.white)
-                                            .frame(width: 48, height: 48)
-                                            .background(Color.white.opacity(0.15))
-                                            .clipShape(RoundedRectangle(cornerRadius: 6))
-                                    }
-                                }
-                                .padding(8)
-                            }
-                            .frame(height: 64)
-                            .background(Color.black.opacity(0.7))
-                            .cornerRadius(8)
-                            .onChange(of: backgroundPickerItem) { _, newItem in
-                                Task {
-                                    if let data = try? await newItem?.loadTransferable(type: Data.self),
-                                       let uiImage = UIImage(data: data) {
-                                        camera.addBackground(uiImage: uiImage)
-                                    }
-                                    backgroundPickerItem = nil
-                                }
-                            }
-
-                            if camera.savedBackgrounds.isEmpty {
-                                Text("Tap + to add a background photo")
-                                    .font(.caption)
-                                    .foregroundColor(.yellow)
-                            }
+                        if camera.backgroundMode == .custom && !camera.hasCustomBackground {
+                            Text("Tap the photo icon above to pick a background")
+                                .font(.caption)
+                                .foregroundColor(.yellow)
+                                .padding(6)
+                                .background(Color.black.opacity(0.7))
+                                .cornerRadius(6)
                         }
 
                         HStack(spacing: 10) {
-                            // Face Tracking Toggle
                             Toggle("Tracking", isOn: $camera.isFaceTrackingEnabled)
                                 .toggleStyle(SwitchToggleStyle(tint: .green))
                                 .padding(10)
                                 .background(Color.black.opacity(0.7))
                                 .cornerRadius(8)
 
-                            // Exposure Lock Toggle
                             Toggle("AE/AF Lock", isOn: $camera.isExposureLocked)
                                 .toggleStyle(SwitchToggleStyle(tint: .orange))
                                 .padding(10)
@@ -216,21 +174,8 @@ struct ContentView: View {
                                 .onChange(of: camera.isExposureLocked) { _, locked in
                                     camera.toggleExposureLock(lock: locked)
                                 }
-
-                            // Mirror Toggle — defaults on for front camera, off for back,
-                            // but always overridable (useful since OBS often wants an
-                            // un-mirrored feed regardless of which lens is active).
-                            Toggle("Mirror", isOn: $camera.isMirrored)
-                                .toggleStyle(SwitchToggleStyle(tint: .blue))
-                                .padding(10)
-                                .background(Color.black.opacity(0.7))
-                                .cornerRadius(8)
-                                .onChange(of: camera.isMirrored) { _, mirrored in
-                                    camera.setMirrored(mirrored)
-                                }
                         }
 
-                        // OBS Connection Dashboard
                         VStack(spacing: 5) {
                             Text("WI-FI OBS URL:  \(camera.getWiFiAddress())")
                                 .font(.subheadline)
@@ -255,7 +200,6 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
     @Published var isFaceTrackingEnabled = true
     @Published var backgroundMode: BackgroundMode = .off
     @Published var isExposureLocked = false
-    @Published var isMirrored: Bool = true
     @Published var zoomIntensity: CGFloat = 2.8
 
     @Published var availableCameras: [AVCaptureDevice] = []
@@ -265,46 +209,19 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
     @Published var thermalString: String = "Normal"
     @Published var thermalColor: Color = .green
 
-    // Saved custom backgrounds, persisted across launches.
-    @Published var savedBackgrounds: [SavedBackground] = []
-    @Published var selectedBackgroundID: UUID?
-
     var hasCustomBackground: Bool { customBackgroundImage != nil }
 
     private var captureSession = AVCaptureSession()
     private var currentFaceRect: CGRect = CGRect(x: 0.25, y: 0.25, width: 0.5, height: 0.5)
 
-    // Dedicated request for Neural Engine background segmentation
     private let segmentationRequest = VNGeneratePersonSegmentationRequest()
     private let context = CIContext()
-
-    // The currently-active custom background, stored once as a CIImage so we don't
-    // re-decode it on every frame. All reads (in captureOutput) and writes (in
-    // activateBackground) are dispatched onto videoQueue below, so access is
-    // serialized without needing a lock.
     private var customBackgroundImage: CIImage?
-
-    // Single shared serial queue for all camera frame delivery + background-image
-    // mutation. Previously this was re-created with `DispatchQueue(label: "videoQueue")`
-    // in two different places, which does NOT give you the same queue — matching labels
-    // don't merge queues, so that was a real, unsynchronized cross-thread race.
     private let videoQueue = DispatchQueue(label: "com.facetrackcam.videoQueue")
 
     private var listener: NWListener?
     private var connections: [NWConnection] = []
     private var timer: Timer?
-
-    // MARK: - Saved background persistence
-
-    private let savedBackgroundIDsKey = "savedBackgroundIDs"
-    private let selectedBackgroundIDKey = "selectedBackgroundID"
-
-    private let backgroundsDirectory: URL = {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let dir = docs.appendingPathComponent("Backgrounds", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir
-    }()
 
     override init() {
         super.init()
@@ -312,15 +229,8 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
         loadCameras()
         startMJPEGServer()
         startHardwareMonitor()
-        loadSavedBackgrounds()
     }
 
-    // MARK: - Custom Background
-
-    /// Called from the UI when the user picks a photo. Converts it to a CIImage
-    /// (respecting EXIF orientation) then hops onto videoQueue — the same queue
-    /// captureOutput runs on — to store it, so there's no race with the frame
-    /// that's reading customBackgroundImage at the same moment.
     func setCustomBackground(uiImage: UIImage) {
         guard let ciImage = CIImage(image: uiImage, options: [.applyOrientationProperty: true]) else { return }
         videoQueue.async { [weak self] in
@@ -328,8 +238,6 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
         }
     }
 
-    /// Scales `image` up (aspect-fill) and center-crops it to exactly `targetSize`,
-    /// normalizing its origin to (0,0) so it lines up with the live camera frame.
     private func scaledToFill(image: CIImage, targetSize: CGSize) -> CIImage {
         let extent = image.extent
         guard extent.width > 0, extent.height > 0, targetSize.width > 0, targetSize.height > 0 else { return image }
@@ -428,9 +336,6 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
             connection.start(queue: .global())
             let header = "HTTP/1.1 200 OK\r\nContent-Type: multipart/x-mixed-replace; boundary=frame\r\n\r\n"
             connection.send(content: header.data(using: .utf8)!, completion: .contentProcessed({ _ in }))
-            // Hop onto videoQueue before mutating `connections` — captureOutput reads/iterates
-            // this same array on videoQueue, so this keeps all access on one serial queue
-            // instead of racing across the listener's queue and the capture queue.
             self?.videoQueue.async {
                 self?.connections.append(connection)
             }
@@ -442,13 +347,11 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         var currentCIImage = CIImage(cvPixelBuffer: pixelBuffer)
 
-        // 1. Apply background replacement (Portrait blur or Custom image) if enabled
         if backgroundMode != .off {
             try? VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:]).perform([segmentationRequest])
             if let maskPixelBuffer = segmentationRequest.results?.first?.pixelBuffer {
                 let maskImage = CIImage(cvPixelBuffer: maskPixelBuffer)
 
-                // Scale the Neural Engine mask back up to full frame resolution
                 let scaleX = currentCIImage.extent.width / maskImage.extent.width
                 let scaleY = currentCIImage.extent.height / maskImage.extent.height
                 let scaledMask = maskImage.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
@@ -466,8 +369,6 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
                     if let customBG = customBackgroundImage {
                         backgroundImage = scaledToFill(image: customBG, targetSize: currentCIImage.extent.size)
                     }
-                    // If no photo has been picked yet, fall through with no replacement
-                    // (backgroundImage stays nil) so the raw feed shows until one is chosen.
 
                 case .off:
                     backgroundImage = nil
@@ -488,7 +389,6 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
 
         var finalCGImage: CGImage?
 
-        // 2. Apply Face Tracking & Cropping
         if isFaceTrackingEnabled {
             let request = VNDetectFaceRectanglesRequest { [weak self] req, _ in
                 guard let self = self, let results = req.results as? [VNFaceObservation], let face = results.first else { return }
@@ -507,7 +407,6 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
             let faceW = currentFaceRect.size.width * width
             let faceH = currentFaceRect.size.height * height
 
-            // Dynamic Zoom based on slider
             let cropW = min(faceW * zoomIntensity, width)
             let cropH = cropW * (9.0/16.0)
             let cropX = max(0, min((faceX + faceW/2) - (cropW / 2), width - cropW))
