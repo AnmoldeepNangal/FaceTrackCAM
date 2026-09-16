@@ -22,7 +22,6 @@ struct ContentView: View {
         ZStack {
             Color.black.ignoresSafeArea()
             
-            // 1. Live Camera Preview
             if let frame = camera.currentFrame {
                 Image(decorative: frame, scale: 1.0, orientation: .up)
                     .resizable()
@@ -30,10 +29,8 @@ struct ContentView: View {
                     .ignoresSafeArea()
             }
             
-            // 2. Liquid Glass UI Overlay
             if !camera.isBlackoutMode {
                 VStack {
-                    // TOP BAR: Status & Lens
                     HStack {
                         Picker("Lens", selection: $camera.selectedCameraID) {
                             ForEach(camera.availableCameras, id: \.uniqueID) { cam in
@@ -47,7 +44,6 @@ struct ContentView: View {
                         
                         Spacer()
                         
-                        // Thermal & Battery Status
                         HStack(spacing: 12) {
                             Image(systemName: thermalIcon(state: camera.thermalState))
                                 .foregroundColor(thermalColor(state: camera.thermalState))
@@ -67,7 +63,6 @@ struct ContentView: View {
                     
                     Spacer()
                     
-                    // BOTTOM BAR: Pro Controls
                     VStack(spacing: 15) {
                         HStack(spacing: 20) {
                             ControlToggle(title: "Track", icon: "face.dashed", isOn: $camera.isFaceTrackingEnabled)
@@ -117,7 +112,6 @@ struct ContentView: View {
                     .padding()
                 }
             } else {
-                // 3. BLACKOUT MODE OVERLAY
                 ZStack {
                     Color.black.ignoresSafeArea()
                     VStack {
@@ -183,16 +177,13 @@ struct ControlToggle: View {
     }
 }
 
-enum BackgroundMode {
+enum BackgroundMode: String, Hashable, CaseIterable {
     case normal, blur, greenScreen
 }
 
 class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleBufferDelegate {
     @Published var currentFrame: CGImage?
     @Published var isFaceTrackingEnabled = true
-    @Published var isExposureLocked = false { didSet { updateExposureLock() } }
-    @Published var isBlackoutMode = false { didSet { updateScreenBrightness() } }
-    
     @Published var bgMode: BackgroundMode = .normal
     @Published var zoomLevel: Double = 1.5
     @Published var blurRadius: Double = 15.0
@@ -203,6 +194,22 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
     @Published var thermalState: ProcessInfo.ThermalState = .nominal
     @Published var wifiAddress: String = "Loading..."
     
+    @Published var isExposureLocked = false {
+        didSet { updateExposureLock() }
+    }
+    @Published var isBlackoutMode = false {
+        didSet {
+            DispatchQueue.main.async {
+                if self.isBlackoutMode {
+                    self.originalBrightness = UIScreen.main.brightness
+                    UIScreen.main.brightness = 0.0
+                } else {
+                    UIScreen.main.brightness = self.originalBrightness
+                }
+            }
+        }
+    }
+    
     private var captureSession = AVCaptureSession()
     private var currentFaceRect: CGRect = CGRect(x: 0.25, y: 0.25, width: 0.5, height: 0.5)
     private let ciContext = CIContext(options: [.useSoftwareRenderer: false])
@@ -211,14 +218,23 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
     private var connections: [NWConnection] = []
     private var originalBrightness: CGFloat = 0.5
     
-    private var faceRequest: VNDetectFaceRectanglesRequest!
+    private lazy var faceRequest: VNDetectFaceRectanglesRequest = {
+        return VNDetectFaceRectanglesRequest { [weak self] req, _ in
+            if let results = req.results as? [VNFaceObservation], let face = results.first {
+                self?.latestFaceRect = face.boundingBox
+            }
+        }
+    }()
+    
     private var segmentationRequest = VNGeneratePersonSegmentationRequest()
     private var latestFaceRect: CGRect?
     
     override init() {
         super.init()
+        segmentationRequest.qualityLevel = .fast
+        segmentationRequest.outputPixelFormat = kCVPixelFormatType_OneComponent8
+        
         setupSystemMonitors()
-        setupVision()
         loadCameras()
         startMJPEGServer()
     }
@@ -230,18 +246,9 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
         self.wifiAddress = getWiFiAddress()
         
         Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
-            self?.batteryLevel = UIDevice.current.batteryLevel
-            self?.thermalState = ProcessInfo.processInfo.thermalState
-        }
-    }
-    
-    func setupVision() {
-        segmentationRequest.qualityLevel = .fast
-        segmentationRequest.outputPixelFormat = kCVPixelFormatType_OneComponent8
-        
-        faceRequest = VNDetectFaceRectanglesRequest { [weak self] req, _ in
-            if let results = req.results as? [VNFaceObservation], let face = results.first {
-                self?.latestFaceRect = face.boundingBox
+            DispatchQueue.main.async {
+                self?.batteryLevel = UIDevice.current.batteryLevel
+                self?.thermalState = ProcessInfo.processInfo.thermalState
             }
         }
     }
@@ -298,17 +305,6 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
             }
             device.unlockForConfiguration()
         } catch {}
-    }
-    
-    func updateScreenBrightness() {
-        DispatchQueue.main.async {
-            if self.isBlackoutMode {
-                self.originalBrightness = UIScreen.main.brightness
-                UIScreen.main.brightness = 0.0
-            } else {
-                UIScreen.main.brightness = self.originalBrightness
-            }
-        }
     }
     
     func startMJPEGServer() {
