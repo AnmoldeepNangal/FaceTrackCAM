@@ -214,7 +214,7 @@ struct ContentView: View {
                     PhotosPicker(
                         selection: $backgroundPickerItem,
                         matching: .images,
-                        photoLibrary: .shared
+                        photoLibrary: .shared()
                     ) {
                         HStack(spacing: 6) {
                             Image(systemName: camera.hasCustomBackground
