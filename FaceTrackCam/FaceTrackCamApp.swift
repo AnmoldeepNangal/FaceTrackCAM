@@ -6,10 +6,9 @@ import CoreImage.CIFilterBuiltins
 import PhotosUI
 
 enum BackgroundMode: String, CaseIterable {
-    case none = "Off"
-    case blur = "Blur"
-    case greenScreen = "Green Screen"
-    case customImage = "Custom Image"
+    case off = "Off"
+    case portrait = "Portrait"
+    case custom = "Custom"
 }
 
 @main
@@ -120,14 +119,14 @@ struct ContentView: View {
                                 .padding(.horizontal, 10)
                                 .background(Color.gray.opacity(0.3))
                                 .cornerRadius(8)
-                                .onChange(of: camera.selectedCameraID) { _, newID in
-                                    camera.switchCamera(cameraID: newID)
+                                .onChange(of: camera.selectedCameraID) {
+                                    camera.switchCamera(cameraID: camera.selectedCameraID)
                                 }
                                 
                                 Spacer()
                             }
                             
-                            // Multi-state Background Selector
+                            // Simplified Background Selector (Off, Portrait, Custom)
                             Picker("Background", selection: $camera.backgroundMode) {
                                 ForEach(BackgroundMode.allCases, id: \.self) { mode in
                                     Text(mode.rawValue).tag(mode)
@@ -137,8 +136,8 @@ struct ContentView: View {
                             .background(Color.white.opacity(0.8))
                             .cornerRadius(8)
                             
-                            // Only show the Photo Picker button if "Custom Image" is selected
-                            if camera.backgroundMode == .customImage {
+                            // Only show Photo Picker if "Custom" is selected
+                            if camera.backgroundMode == .custom {
                                 PhotosPicker(selection: $selectedItem, matching: .images, photoLibrary: .shared()) {
                                     HStack {
                                         Image(systemName: "photo.on.rectangle")
@@ -151,9 +150,10 @@ struct ContentView: View {
                                     .background(Color.blue)
                                     .cornerRadius(8)
                                 }
-                                .onChange(of: selectedItem) { _, newItem in
+                                .onChange(of: selectedItem) {
                                     Task {
-                                        if let data = try? await newItem?.loadTransferable(type: Data.self),
+                                        if let item = selectedItem,
+                                           let data = try? await item.loadTransferable(type: Data.self),
                                            let uiImage = UIImage(data: data),
                                            let ciImage = CIImage(image: uiImage) {
                                             DispatchQueue.main.async {
@@ -180,8 +180,8 @@ struct ContentView: View {
                                 .padding(10)
                                 .background(Color.black.opacity(0.7))
                                 .cornerRadius(8)
-                                .onChange(of: camera.isExposureLocked) { _, locked in
-                                    camera.toggleExposureLock(lock: locked)
+                                .onChange(of: camera.isExposureLocked) {
+                                    camera.toggleExposureLock(lock: camera.isExposureLocked)
                                 }
                         }
                         
@@ -207,7 +207,7 @@ struct ContentView: View {
 class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleBufferDelegate {
     @Published var currentFrame: CGImage?
     @Published var isFaceTrackingEnabled = true
-    @Published var backgroundMode: BackgroundMode = .none
+    @Published var backgroundMode: BackgroundMode = .off
     @Published var isExposureLocked = false
     @Published var zoomIntensity: CGFloat = 2.8
     @Published var customBackgroundImage: CIImage?
@@ -315,7 +315,7 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         var currentCIImage = CIImage(cvPixelBuffer: pixelBuffer)
         
-        if backgroundMode != .none {
+        if backgroundMode != .off {
             try? VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:]).perform([segmentationRequest])
             if let maskPixelBuffer = segmentationRequest.results?.first?.pixelBuffer {
                 let maskImage = CIImage(cvPixelBuffer: maskPixelBuffer)
@@ -327,17 +327,13 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
                 var generatedBackground: CIImage?
                 
                 switch backgroundMode {
-                case .blur:
+                case .portrait:
                     let blurFilter = CIFilter.gaussianBlur()
                     blurFilter.inputImage = currentCIImage
                     blurFilter.radius = 15.0
                     generatedBackground = blurFilter.outputImage?.cropped(to: currentCIImage.extent)
                     
-                case .greenScreen:
-                    // Fix: Use CIColor instead of SwiftUI Color for CoreImage
-                    generatedBackground = CIImage(color: CIColor(red: 0, green: 1, blue: 0)).cropped(to: currentCIImage.extent)
-                    
-                case .customImage:
+                case .custom:
                     if let customImg = customBackgroundImage {
                         let scale = max(currentCIImage.extent.width / customImg.extent.width,
                                         currentCIImage.extent.height / customImg.extent.height)
@@ -350,7 +346,7 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
                         
                         generatedBackground = centeredBG.cropped(to: currentCIImage.extent)
                     }
-                case .none:
+                case .off:
                     break
                 }
                 
