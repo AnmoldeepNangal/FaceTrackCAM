@@ -15,6 +15,7 @@ struct FaceTrackCamApp: App {
     }
 }
 
+// MARK: - Main UI
 struct ContentView: View {
     @StateObject var camera = CameraTracker()
     
@@ -29,125 +30,113 @@ struct ContentView: View {
                     .ignoresSafeArea()
             }
             
-            if !camera.isBlackoutMode {
-                VStack {
-                    HStack {
-                        Picker("Lens", selection: $camera.selectedCameraID) {
-                            ForEach(camera.availableCameras, id: \.uniqueID) { cam in
-                                Text(cam.localizedName).tag(cam.uniqueID)
-                            }
-                        }
-                        .pickerStyle(MenuPickerStyle())
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(.ultraThinMaterial, in: Capsule())
-                        
-                        Spacer()
-                        
-                        HStack(spacing: 12) {
-                            Image(systemName: thermalIcon(state: camera.thermalState))
-                                .foregroundColor(thermalColor(state: camera.thermalState))
-                            
-                            HStack(spacing: 4) {
-                                Text("\(Int(camera.batteryLevel * 100))%")
-                                    .font(.caption.bold())
-                                Image(systemName: "battery.100")
-                            }
-                            .foregroundColor(camera.batteryLevel < 0.2 ? .red : .primary)
-                        }
-                        .padding(.horizontal, 15)
-                        .padding(.vertical, 10)
-                        .background(.ultraThinMaterial, in: Capsule())
-                    }
-                    .padding()
-                    
-                    Spacer()
-                    
-                    VStack(spacing: 15) {
-                        HStack(spacing: 20) {
-                            ControlToggle(title: "Track", icon: "face.dashed", isOn: $camera.isFaceTrackingEnabled)
-                            ControlToggle(title: "Lock Exp", icon: "lock.fill", isOn: $camera.isExposureLocked)
-                            ControlToggle(title: "Blackout", icon: "moon.fill", isOn: $camera.isBlackoutMode)
-                        }
-                        
-                        Divider().background(Color.white.opacity(0.3))
-                        
-                        Picker("Background", selection: $camera.bgMode) {
-                            Text("Normal").tag(BackgroundMode.normal)
-                            Text("Hardware Blur").tag(BackgroundMode.blur)
-                            Text("Green Cutout").tag(BackgroundMode.greenScreen)
-                        }
-                        .pickerStyle(SegmentedPickerStyle())
-                        
-                        if camera.isFaceTrackingEnabled {
-                            HStack {
-                                Image(systemName: "magnifyingglass")
-                                Slider(value: $camera.zoomLevel, in: 1.0...3.0, step: 0.1)
-                                    .accentColor(.white)
-                                Text("\(String(format: "%.1fx", camera.zoomLevel))").font(.caption.bold())
-                            }
-                        }
-                        
-                        if camera.bgMode == .blur {
-                            HStack {
-                                Image(systemName: "drop.fill")
-                                Slider(value: $camera.blurRadius, in: 5.0...40.0, step: 1.0)
-                                    .accentColor(.white)
-                            }
-                        }
-                        
-                        HStack {
-                            Text("Wired: 127.0.0.1:8080")
-                                .font(.caption2.bold())
-                                .foregroundColor(.green)
-                            Spacer()
-                            Text("Wi-Fi: \(camera.wifiAddress)")
-                                .font(.caption2.bold())
-                                .foregroundColor(.gray)
-                        }
-                        .padding(.top, 5)
-                    }
-                    .padding(20)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 25, style: .continuous))
-                    .padding()
-                }
+            if camera.isBlackoutMode {
+                BlackoutView(camera: camera)
             } else {
-                ZStack {
-                    Color.black.ignoresSafeArea()
-                    VStack {
-                        Image(systemName: "moon.zzz.fill")
-                            .font(.system(size: 50))
-                            .foregroundColor(.gray.opacity(0.3))
-                        Text("Stream Active. Tap to wake.")
-                            .foregroundColor(.gray.opacity(0.5))
-                            .padding()
-                    }
-                }
-                .onTapGesture {
-                    camera.isBlackoutMode = false
+                VStack {
+                    TopStatusBar(camera: camera)
+                    Spacer()
+                    BottomControlsBar(camera: camera)
                 }
             }
         }
         .preferredColorScheme(.dark)
+        // Move hardware triggers out of variables and into explicit listeners
+        .onChange(of: camera.isBlackoutMode) { mode in camera.updateScreenBrightness(to: mode) }
+        .onChange(of: camera.isExposureLocked) { _ in camera.updateExposureLock() }
     }
-    
-    func thermalIcon(state: ProcessInfo.ThermalState) -> String {
-        switch state {
-        case .nominal: return "thermometer.sun"
-        case .fair: return "thermometer.sun.fill"
-        case .serious: return "thermometer.high"
-        case .critical: return "flame.fill"
-        @unknown default: return "thermometer"
+}
+
+// MARK: - Sub Views to Prevent Compiler Crashes
+struct BlackoutView: View {
+    @ObservedObject var camera: CameraTracker
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            VStack(spacing: 10) {
+                Image(systemName: "moon.zzz.fill").font(.system(size: 50)).foregroundColor(.gray.opacity(0.3))
+                Text("Stream Active. Tap to wake.").foregroundColor(.gray.opacity(0.5))
+            }
         }
+        .onTapGesture { camera.isBlackoutMode = false }
     }
-    func thermalColor(state: ProcessInfo.ThermalState) -> Color {
-        switch state {
-        case .nominal: return .green
-        case .fair: return .yellow
-        case .serious: return .orange
-        case .critical: return .red
-        @unknown default: return .white
+}
+
+struct TopStatusBar: View {
+    @ObservedObject var camera: CameraTracker
+    var body: some View {
+        HStack {
+            Picker("Lens", selection: $camera.selectedCameraID) {
+                ForEach(camera.availableCameras, id: \.uniqueID) { cam in
+                    Text(cam.localizedName).tag(cam.uniqueID)
+                }
+            }
+            .pickerStyle(MenuPickerStyle())
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            .background(.ultraThinMaterial, in: Capsule())
+            
+            Spacer()
+            
+            HStack(spacing: 12) {
+                Image(systemName: camera.thermalIcon)
+                    .foregroundColor(camera.thermalColor)
+                HStack(spacing: 4) {
+                    Text("\(Int(camera.batteryLevel * 100))%").font(.caption.bold())
+                    Image(systemName: "battery.100")
+                }
+                .foregroundColor(camera.batteryLevel < 0.2 ? .red : .primary)
+            }
+            .padding(.horizontal, 15).padding(.vertical, 10)
+            .background(.ultraThinMaterial, in: Capsule())
         }
+        .padding()
+    }
+}
+
+struct BottomControlsBar: View {
+    @ObservedObject var camera: CameraTracker
+    var body: some View {
+        VStack(spacing: 15) {
+            HStack(spacing: 20) {
+                ControlToggle(title: "Track", icon: "face.dashed", isOn: $camera.isFaceTrackingEnabled)
+                ControlToggle(title: "Lock Exp", icon: "lock.fill", isOn: $camera.isExposureLocked)
+                ControlToggle(title: "Blackout", icon: "moon.fill", isOn: $camera.isBlackoutMode)
+            }
+            
+            Divider().background(Color.white.opacity(0.3))
+            
+            Picker("Background", selection: $camera.bgMode) {
+                Text("Normal").tag(0)
+                Text("Blur").tag(1)
+                Text("Green").tag(2)
+            }
+            .pickerStyle(SegmentedPickerStyle())
+            
+            if camera.isFaceTrackingEnabled {
+                HStack {
+                    Image(systemName: "magnifyingglass")
+                    Slider(value: $camera.zoomLevel, in: 1.0...3.0, step: 0.1).accentColor(.white)
+                    Text("\(String(format: "%.1fx", camera.zoomLevel))").font(.caption.bold())
+                }
+            }
+            
+            if camera.bgMode == 1 {
+                HStack {
+                    Image(systemName: "drop.fill")
+                    Slider(value: $camera.blurRadius, in: 5.0...40.0, step: 1.0).accentColor(.white)
+                }
+            }
+            
+            HStack {
+                Text("Wired: 127.0.0.1:8080").font(.caption2.bold()).foregroundColor(.green)
+                Spacer()
+                Text("Wi-Fi: \(camera.wifiAddress)").font(.caption2.bold()).foregroundColor(.gray)
+            }
+            .padding(.top, 5)
+        }
+        .padding(20)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 25, style: .continuous))
+        .padding()
     }
 }
 
@@ -155,63 +144,44 @@ struct ControlToggle: View {
     var title: String
     var icon: String
     @Binding var isOn: Bool
-    
     var body: some View {
         Button(action: { isOn.toggle() }) {
             VStack(spacing: 8) {
-                Image(systemName: icon)
-                    .font(.title2)
-                Text(title)
-                    .font(.caption2.bold())
+                Image(systemName: icon).font(.title2)
+                Text(title).font(.caption2.bold())
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity).padding(.vertical, 12)
             .background(isOn ? Color.white : Color.clear)
             .foregroundColor(isOn ? .black : .white)
             .cornerRadius(12)
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
-            )
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.2), lineWidth: 1))
         }
     }
 }
 
-enum BackgroundMode: String, Hashable, CaseIterable {
-    case normal, blur, greenScreen
-}
-
+// MARK: - Camera & Streaming Engine
 class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleBufferDelegate {
     @Published var currentFrame: CGImage?
     @Published var isFaceTrackingEnabled = true
-    @Published var bgMode: BackgroundMode = .normal
+    @Published var isExposureLocked = false
+    @Published var isBlackoutMode = false
+    
+    // bgMode: 0 = Normal, 1 = Blur, 2 = Green Screen
+    @Published var bgMode: Int = 0
     @Published var zoomLevel: Double = 1.5
     @Published var blurRadius: Double = 15.0
     
     @Published var availableCameras: [AVCaptureDevice] = []
     @Published var selectedCameraID: String = ""
     @Published var batteryLevel: Float = 1.0
-    @Published var thermalState: ProcessInfo.ThermalState = .nominal
     @Published var wifiAddress: String = "Loading..."
     
-    @Published var isExposureLocked = false {
-        didSet { updateExposureLock() }
-    }
-    @Published var isBlackoutMode = false {
-        didSet {
-            DispatchQueue.main.async {
-                if self.isBlackoutMode {
-                    self.originalBrightness = UIScreen.main.brightness
-                    UIScreen.main.brightness = 0.0
-                } else {
-                    UIScreen.main.brightness = self.originalBrightness
-                }
-            }
-        }
-    }
+    // Thermal outputs for UI mapping
+    @Published var thermalIcon: String = "thermometer.sun"
+    @Published var thermalColor: Color = .green
     
     private var captureSession = AVCaptureSession()
-    private var currentFaceRect: CGRect = CGRect(x: 0.25, y: 0.25, width: 0.5, height: 0.5)
+    private var currentFaceRect = CGRect(x: 0.25, y: 0.25, width: 0.5, height: 0.5)
     private let ciContext = CIContext(options: [.useSoftwareRenderer: false])
     
     private var listener: NWListener?
@@ -241,14 +211,45 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
     
     func setupSystemMonitors() {
         UIDevice.current.isBatteryMonitoringEnabled = true
-        self.batteryLevel = UIDevice.current.batteryLevel
-        self.thermalState = ProcessInfo.processInfo.thermalState
-        self.wifiAddress = getWiFiAddress()
+        updateDeviceStats()
         
         Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
-            DispatchQueue.main.async {
-                self?.batteryLevel = UIDevice.current.batteryLevel
-                self?.thermalState = ProcessInfo.processInfo.thermalState
+            self?.updateDeviceStats()
+        }
+    }
+    
+    func updateDeviceStats() {
+        DispatchQueue.main.async {
+            self.batteryLevel = UIDevice.current.batteryLevel
+            self.wifiAddress = self.getWiFiAddress()
+            
+            switch ProcessInfo.processInfo.thermalState {
+            case .nominal:
+                self.thermalIcon = "thermometer.sun"
+                self.thermalColor = .green
+            case .fair:
+                self.thermalIcon = "thermometer.sun.fill"
+                self.thermalColor = .yellow
+            case .serious:
+                self.thermalIcon = "thermometer.high"
+                self.thermalColor = .orange
+            case .critical:
+                self.thermalIcon = "flame.fill"
+                self.thermalColor = .red
+            @unknown default:
+                self.thermalIcon = "thermometer"
+                self.thermalColor = .white
+            }
+        }
+    }
+    
+    func updateScreenBrightness(to mode: Bool) {
+        DispatchQueue.main.async {
+            if mode {
+                self.originalBrightness = UIScreen.main.brightness
+                UIScreen.main.brightness = 0.0
+            } else {
+                UIScreen.main.brightness = self.originalBrightness
             }
         }
     }
@@ -326,23 +327,26 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
         
         var requests: [VNRequest] = []
         if isFaceTrackingEnabled { requests.append(faceRequest) }
-        if bgMode != .normal { requests.append(segmentationRequest) }
+        if bgMode != 0 { requests.append(segmentationRequest) }
         
         if !requests.isEmpty {
             try? VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:]).perform(requests)
         }
         
-        if bgMode != .normal, let maskPixelBuffer = segmentationRequest.results?.first?.pixelBuffer {
-            let maskImage = CIImage(cvPixelBuffer: maskPixelBuffer).transformed(by: CGAffineTransform(scaleX: width / CGFloat(CVPixelBufferGetWidth(maskPixelBuffer)), y: height / CGFloat(CVPixelBufferGetHeight(maskPixelBuffer))))
+        if bgMode != 0, let maskPixelBuffer = segmentationRequest.results?.first?.pixelBuffer {
+            let maskW = CGFloat(CVPixelBufferGetWidth(maskPixelBuffer))
+            let maskH = CGFloat(CVPixelBufferGetHeight(maskPixelBuffer))
+            let scaleTransform = CGAffineTransform(scaleX: width / maskW, y: height / maskH)
+            let maskImage = CIImage(cvPixelBuffer: maskPixelBuffer).transformed(by: scaleTransform)
             
             let bgImage: CIImage
-            if bgMode == .blur {
+            if bgMode == 1 {
                 let blurFilter = CIFilter.gaussianBlur()
                 blurFilter.inputImage = ciImage
                 blurFilter.radius = Float(blurRadius)
                 bgImage = blurFilter.outputImage?.cropped(to: ciImage.extent) ?? ciImage
             } else { 
-                bgImage = CIImage(color: CIColor(red: 0, green: 1, blue: 0)).cropped(to: ciImage.extent)
+                bgImage = CIImage(color: CIColor.green).cropped(to: ciImage.extent)
             }
             
             let blendFilter = CIFilter.blendWithMask()
@@ -353,22 +357,23 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
         }
         
         if isFaceTrackingEnabled, let target = latestFaceRect {
-            currentFaceRect.origin.x += (target.origin.x - currentFaceRect.origin.x) * 0.1
-            currentFaceRect.origin.y += (target.origin.y - currentFaceRect.origin.y) * 0.1
-            currentFaceRect.size.width += (target.size.width - currentFaceRect.size.width) * 0.1
-            currentFaceRect.size.height += (target.size.height - currentFaceRect.size.height) * 0.1
+            let ease: CGFloat = 0.1
+            currentFaceRect.origin.x += (target.origin.x - currentFaceRect.origin.x) * ease
+            currentFaceRect.origin.y += (target.origin.y - currentFaceRect.origin.y) * ease
+            currentFaceRect.size.width += (target.size.width - currentFaceRect.size.width) * ease
+            currentFaceRect.size.height += (target.size.height - currentFaceRect.size.height) * ease
             
             let centerX = (currentFaceRect.origin.x + currentFaceRect.size.width / 2.0) * width
             let centerY = (currentFaceRect.origin.y + currentFaceRect.size.height * 0.45) * height
             
-            let multiplier = max(1.4, 4.2 / CGFloat(zoomLevel))
+            let multiplier = CGFloat(max(1.4, 4.2 / zoomLevel))
             var cropW = min(width, currentFaceRect.size.width * width * multiplier)
-            var cropH = cropW * (9.0 / 16.0)
+            var cropH = cropW * 0.5625 // 9:16 ratio
             
-            if cropH > height { cropH = height; cropW = height * (16.0 / 9.0) }
+            if cropH > height { cropH = height; cropW = height * 1.7777 } // 16:9 ratio
             
-            var cropX = max(0, min(centerX - (cropW / 2.0), width - cropW))
-            var cropY = max(0, min(centerY - (cropH / 2.0), height - cropH))
+            let cropX = max(0, min(centerX - (cropW / 2.0), width - cropW))
+            let cropY = max(0, min(centerY - (cropH / 2.0), height - cropH))
             
             ciImage = ciImage.cropped(to: CGRect(x: cropX, y: cropY, width: cropW, height: cropH))
                 .transformed(by: CGAffineTransform(translationX: -cropX, y: -cropY))
