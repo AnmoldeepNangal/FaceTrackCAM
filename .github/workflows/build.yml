@@ -1,0 +1,30 @@
+name: Build iOS IPA
+on: [push, workflow_dispatch]
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install XcodeGen
+        run: brew install xcodegen
+        
+      - name: Generate Project
+        run: xcodegen generate
+        
+      - name: Build App
+        run: |
+          xcodebuild clean build -project FaceTrackCam.xcodeproj -scheme FaceTrackCam -sdk iphoneos -configuration Release CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO -derivedDataPath derived_data
+        
+      - name: Package IPA
+        run: |
+          mkdir Payload
+          cp -r derived_data/Build/Products/Release-iphoneos/FaceTrackCam.app Payload/
+          zip -r FaceTrackCam.ipa Payload/
+          
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: FaceTrackCam-App
+          path: FaceTrackCam.ipa
