@@ -28,103 +28,108 @@ struct ContentView: View {
     @State private var showSettingsSheet = false
 
     var body: some View {
-        ZStack {
-            // Edge-to-Edge Native Camera Background
-            Color.black.ignoresSafeArea()
-
-            if isBlackoutMode {
+        GeometryReader { geometry in
+            ZStack {
+                // 1. True Edge-to-Edge Background
                 Color.black.ignoresSafeArea()
-                    .overlay(
-                        VStack(spacing: 12) {
-                            Image(systemName: "moon.zzz.fill")
-                                .font(.system(size: 40))
-                                .foregroundColor(.gray)
-                            Text("Blackout Mode Active")
-                                .font(.headline)
-                                .foregroundColor(.white)
-                            Text("Server & tracking running in background.\nTap anywhere to wake.")
-                                .font(.subheadline)
-                                .foregroundColor(.gray)
-                                .multilineTextAlignment(.center)
+
+                if isBlackoutMode {
+                    Color.black.ignoresSafeArea()
+                        .overlay(
+                            VStack(spacing: 12) {
+                                Image(systemName: "moon.zzz.fill")
+                                    .font(.system(size: 40))
+                                    .foregroundColor(.gray)
+                                Text("Blackout Mode Active")
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                                Text("Server & tracking running in background.\nTap anywhere to wake.")
+                                    .font(.subheadline)
+                                    .foregroundColor(.gray)
+                                    .multilineTextAlignment(.center)
+                            }
+                        )
+                        .onTapGesture {
+                            isBlackoutMode = false
+                            UIScreen.main.brightness = previousBrightness
                         }
-                    )
-                    .onTapGesture {
-                        isBlackoutMode = false
-                        UIScreen.main.brightness = previousBrightness
-                    }
-            } else {
-                if let frame = camera.currentFrame {
-                    Image(decorative: frame, scale: 1.0, orientation: .up)
-                        .resizable()
-                        .scaledToFill()
-                        .ignoresSafeArea()
                 } else {
-                    VStack(spacing: 12) {
-                        ProgressView()
-                            .tint(.white)
-                        Text("Initializing Camera...")
-                            .foregroundColor(.gray)
-                            .font(.subheadline)
-                    }
-                }
-
-                // Top Minimalist Status Bar (Apple Style)
-                VStack {
-                    HStack(spacing: 8) {
-                        // Hardware Status Pill
-                        HStack(spacing: 6) {
-                            Image(systemName: camera.batteryLevel > 0.2 ? "battery.100" : "battery.25")
-                            Text("\(Int(camera.batteryLevel * 100))%")
-                            
-                            Circle()
-                                .fill(camera.thermalColor)
-                                .frame(width: 6, height: 6)
-                            Text(camera.thermalString)
+                    // 2. Fullscreen Scaled Camera Feed (Fills entire screen natively)
+                    if let frame = camera.currentFrame {
+                        Image(decorative: frame, scale: 1.0, orientation: .up)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: geometry.size.width, height: geometry.size.height)
+                            .clipped()
+                            .ignoresSafeArea()
+                    } else {
+                        VStack(spacing: 12) {
+                            ProgressView()
+                                .tint(.white)
+                            Text("Initializing Camera...")
+                                .foregroundColor(.gray)
+                                .font(.subheadline)
                         }
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(.ultraThinMaterial)
-                        .clipShape(Capsule())
+                    }
 
+                    // 3. Clean Floating Controls Stack (Respects Notch / Dynamic Island)
+                    VStack {
+                        HStack(spacing: 12) {
+                            // Hardware Status Pill
+                            HStack(spacing: 6) {
+                                Image(systemName: camera.batteryLevel > 0.2 ? "battery.100" : "battery.25")
+                                Text("\(Int(camera.batteryLevel * 100))%")
+                                
+                                Circle()
+                                    .fill(camera.thermalColor)
+                                    .frame(width: 6, height: 6)
+                                Text(camera.thermalString)
+                            }
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(.ultraThinMaterial)
+                            .clipShape(Capsule())
+
+                            Spacer()
+
+                            // Blackout Mode Button
+                            Button(action: {
+                                previousBrightness = UIScreen.main.brightness
+                                UIScreen.main.brightness = 0.0
+                                isBlackoutMode = true
+                            }) {
+                                Image(systemName: "moon.fill")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundColor(.white)
+                                    .padding(10)
+                                    .background(.ultraThinMaterial)
+                                    .clipShape(Circle())
+                            }
+
+                            // Settings Drawer Toggle
+                            Button(action: {
+                                showSettingsSheet.toggle()
+                            }) {
+                                Image(systemName: "slider.horizontal.3")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundColor(.white)
+                                    .padding(10)
+                                    .background(.ultraThinMaterial)
+                                    .clipShape(Circle())
+                            }
+                        }
+                        .padding(.horizontal, 24)
+                        .padding(.top, 12)
+                        
                         Spacer()
-
-                        // Blackout Mode Button
-                        Button(action: {
-                            previousBrightness = UIScreen.main.brightness
-                            UIScreen.main.brightness = 0.0
-                            isBlackoutMode = true
-                        }) {
-                            Image(systemName: "moon.fill")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundColor(.white)
-                                .padding(10)
-                                .background(.ultraThinMaterial)
-                                .clipShape(Circle())
-                        }
-
-                        // Settings / Control Drawer Toggle
-                        Button(action: {
-                            showSettingsSheet.toggle()
-                        }) {
-                            Image(systemName: "slider.horizontal.3")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundColor(.white)
-                                .padding(10)
-                                .background(.ultraThinMaterial)
-                                .clipShape(Circle())
-                        }
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 10)
-                    
-                    Spacer()
                 }
             }
         }
+        .ignoresSafeArea()
         .sheet(isPresented: $showSettingsSheet) {
-            // Apple-style Sheet Control Panel
             NavigationView {
                 Form {
                     Section(header: Text("Connection & Output")) {
