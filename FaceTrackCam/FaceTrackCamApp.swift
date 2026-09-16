@@ -2,7 +2,7 @@ import SwiftUI
 import AVFoundation
 import Vision
 import Network
-import Foundation
+import CoreImage.CIFilterBuiltins
 
 @main
 struct FaceTrackCamApp: App {
@@ -20,104 +20,247 @@ struct ContentView: View {
         ZStack {
             Color.black.ignoresSafeArea()
             
-            // 1. Camera Video Feed
+            // 1. Live Camera Preview
             if let frame = camera.currentFrame {
                 Image(decorative: frame, scale: 1.0, orientation: .up)
                     .resizable()
                     .scaledToFit()
                     .ignoresSafeArea()
-            } else {
-                Text("Starting Camera...")
-                    .foregroundColor(.white)
             }
             
-            // 2. User Interface Overlay
-            VStack {
-                HStack {
-                    // Lens Selector Dropdown
-                    Picker("Lens", selection: $camera.selectedCameraID) {
-                        ForEach(camera.availableCameras, id: \.uniqueID) { cam in
-                            Text(cam.localizedName).tag(cam.uniqueID)
+            // 2. Liquid Glass UI Overlay (Hidden if Blackout Mode is ON)
+            if !camera.isBlackoutMode {
+                VStack {
+                    // TOP BAR: Status & Lens
+                    HStack {
+                        Picker("Lens", selection: $camera.selectedCameraID) {
+                            ForEach(camera.availableCameras, id: \.uniqueID) { cam in
+                                Text(cam.localizedName).tag(cam.uniqueID)
+                            }
                         }
+                        .pickerStyle(MenuPickerStyle())
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        
+                        Spacer()
+                        
+                        // Thermal & Battery Status
+                        HStack(spacing: 12) {
+                            Image(systemName: thermalIcon(state: camera.thermalState))
+                                .foregroundColor(thermalColor(state: camera.thermalState))
+                            
+                            HStack(spacing: 4) {
+                                Text("\(Int(camera.batteryLevel * 100))%")
+                                    .font(.caption.bold())
+                                Image(systemName: "battery.100")
+                            }
+                            .foregroundColor(camera.batteryLevel < 0.2 ? .red : .primary)
+                        }
+                        .padding(.horizontal, 15)
+                        .padding(.vertical, 10)
+                        .background(.ultraThinMaterial, in: Capsule())
                     }
-                    .pickerStyle(MenuPickerStyle())
-                    .padding(10)
-                    .background(Color.black.opacity(0.7))
-                    .cornerRadius(8)
-                    .onChange(of: camera.selectedCameraID) { newID in
-                        camera.switchCamera(cameraID: newID)
-                    }
+                    .padding()
                     
                     Spacer()
                     
-                    // Face Tracking Toggle
-                    Toggle("Face Tracking", isOn: $camera.isFaceTrackingEnabled)
-                        .toggleStyle(SwitchToggleStyle(tint: .green))
-                        .padding(10)
-                        .background(Color.black.opacity(0.7))
-                        .cornerRadius(8)
-                        .frame(width: 200)
+                    // BOTTOM BAR: Pro Controls
+                    VStack(spacing: 15) {
+                        // Toggles
+                        HStack(spacing: 20) {
+                            ControlToggle(title: "Track", icon: "face.dashed", isOn: $camera.isFaceTrackingEnabled)
+                            ControlToggle(title: "Lock Exp", icon: "lock.fill", isOn: $camera.isExposureLocked)
+                            ControlToggle(title: "Blackout", icon: "moon.fill", isOn: $camera.isBlackoutMode)
+                        }
+                        
+                        Divider().background(Color.white.opacity(0.3))
+                        
+                        // Background Replacement Mode
+                        Picker("Background", selection: $camera.bgMode) {
+                            Text("Normal").tag(BackgroundMode.normal)
+                            Text("Hardware Blur").tag(BackgroundMode.blur)
+                            Text("Green Cutout").tag(BackgroundMode.greenScreen)
+                        }
+                        .pickerStyle(SegmentedPickerStyle())
+                        
+                        // Sliders
+                        if camera.isFaceTrackingEnabled {
+                            HStack {
+                                Image(systemName: "magnifyingglass")
+                                Slider(value: $camera.zoomLevel, in: 1.0...3.0, step: 0.1)
+                                    .accentColor(.white)
+                                Text("\(String(format: "%.1fx", camera.zoomLevel))").font(.caption.bold())
+                            }
+                        }
+                        
+                        if camera.bgMode == .blur {
+                            HStack {
+                                Image(systemName: "drop.fill")
+                                Slider(value: $camera.blurRadius, in: 5.0...40.0, step: 1.0)
+                                    .accentColor(.white)
+                            }
+                        }
+                        
+                        // Network Info
+                        HStack {
+                            Text("Wired: 127.0.0.1:8080")
+                                .font(.caption2.bold())
+                                .foregroundColor(.green)
+                            Spacer()
+                            Text("Wi-Fi: \(camera.wifiAddress)")
+                                .font(.caption2.bold())
+                                .foregroundColor(.gray)
+                        }
+                        .padding(.top, 5)
+                    }
+                    .padding(20)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 25, style: .continuous))
+                    .padding()
                 }
-                .padding()
-                
-                Spacer()
-                
-                // 3. OBS Connection Dashboard
-                VStack(spacing: 5) {
-                    Text("WIRED OBS URL:  http://127.0.0.1:8080")
-                        .font(.headline)
-                        .foregroundColor(.green)
-                    Text("WI-FI OBS URL:  \(camera.getWiFiAddress())")
-                        .font(.subheadline)
-                        .foregroundColor(.white)
+            } else {
+                // 3. BLACKOUT MODE OVERLAY (Saves OLED Burn-in)
+                ZStack {
+                    Color.black.ignoresSafeArea()
+                    VStack {
+                        Image(systemName: "moon.zzz.fill")
+                            .font(.system(size: 50))
+                            .foregroundColor(.gray.opacity(0.3))
+                        Text("Stream Active. Tap to wake.")
+                            .foregroundColor(.gray.opacity(0.5))
+                            .padding()
+                    }
                 }
-                .padding()
-                .background(Color.black.opacity(0.7))
-                .cornerRadius(10)
-                .padding(.bottom, 20)
+                .onTapGesture {
+                    camera.isBlackoutMode = false
+                }
             }
         }
+        .preferredColorScheme(.dark)
     }
+    
+    // UI Helpers
+    func thermalIcon(state: ProcessInfo.ThermalState) -> String {
+        switch state {
+        case .nominal: return "thermometer.sun"
+        case .fair: return "thermometer.sun.fill"
+        case .serious: return "thermometer.high"
+        case .critical: return "flame.fill"
+        @unknown default: return "thermometer"
+        }
+    }
+    func thermalColor(state: ProcessInfo.ThermalState) -> Color {
+        switch state {
+        case .nominal: return .green
+        case .fair: return .yellow
+        case .serious: return .orange
+        case .critical: return .red
+        @unknown default: return .white
+        }
+    }
+}
+
+// Custom Glass Toggle Button
+struct ControlToggle: View {
+    var title: String
+    var icon: String
+    @Binding var isOn: Bool
+    
+    var body: some View {
+        Button(action: { isOn.toggle() }) {
+            VStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.title2)
+                Text(title)
+                    .font(.caption2.bold())
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .background(isOn ? Color.white : Color.clear)
+            .foregroundColor(isOn ? .black : .white)
+            .cornerRadius(12)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+            )
+        }
+    }
+}
+
+enum BackgroundMode {
+    case normal, blur, greenScreen
 }
 
 class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleBufferDelegate {
     @Published var currentFrame: CGImage?
     @Published var isFaceTrackingEnabled = true
+    @Published var isExposureLocked = false { didSet { updateExposureLock() } }
+    @Published var isBlackoutMode = false { didSet { updateScreenBrightness() } }
+    
+    @Published var bgMode: BackgroundMode = .normal
+    @Published var zoomLevel: Double = 1.5
+    @Published var blurRadius: Double = 15.0
+    
     @Published var availableCameras: [AVCaptureDevice] = []
     @Published var selectedCameraID: String = ""
+    @Published var batteryLevel: Float = 1.0
+    @Published var thermalState: ProcessInfo.ThermalState = .nominal
+    @Published var wifiAddress: String = "Loading..."
     
     private var captureSession = AVCaptureSession()
     private var currentFaceRect: CGRect = CGRect(x: 0.25, y: 0.25, width: 0.5, height: 0.5)
+    private let ciContext = CIContext(options: [.useSoftwareRenderer: false])
     
     private var listener: NWListener?
     private var connections: [NWConnection] = []
+    private var originalBrightness: CGFloat = 0.5
+    
+    // AI Requests
+    private var faceRequest: VNDetectFaceRectanglesRequest!
+    private var segmentationRequest = VNGeneratePersonSegmentationRequest()
+    private var latestFaceRect: CGRect?
+    private var latestMask: CVPixelBuffer?
     
     override init() {
         super.init()
+        setupSystemMonitors()
+        setupVision()
         loadCameras()
         startMJPEGServer()
     }
     
+    func setupSystemMonitors() {
+        UIDevice.current.isBatteryMonitoringEnabled = true
+        self.batteryLevel = UIDevice.current.batteryLevel
+        self.thermalState = ProcessInfo.processInfo.thermalState
+        self.wifiAddress = getWiFiAddress()
+        
+        Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
+            self?.batteryLevel = UIDevice.current.batteryLevel
+            self?.thermalState = ProcessInfo.processInfo.thermalState
+        }
+    }
+    
+    func setupVision() {
+        segmentationRequest.qualityLevel = .fast
+        segmentationRequest.outputPixelFormat = kCVPixelFormatType_OneComponent8
+        
+        faceRequest = VNDetectFaceRectanglesRequest { [weak self] req, _ in
+            if let results = req.results as? [VNFaceObservation], let face = results.first {
+                self?.latestFaceRect = face.boundingBox
+            }
+        }
+    }
+    
     func loadCameras() {
-        // Automatically discovers all physical lenses on your specific iPhone
-        let types: [AVCaptureDevice.DeviceType] = [
-            .builtInWideAngleCamera,
-            .builtInUltraWideCamera,
-            .builtInTelephotoCamera,
-            .builtInTrueDepthCamera
-        ]
+        let types: [AVCaptureDevice.DeviceType] = [.builtInWideAngleCamera, .builtInUltraWideCamera, .builtInTelephotoCamera, .builtInTrueDepthCamera]
         let discovery = AVCaptureDevice.DiscoverySession(deviceTypes: types, mediaType: .video, position: .unspecified)
         
         DispatchQueue.main.async {
             self.availableCameras = discovery.devices
-            
-            // Default to Front Camera on launch
             if let front = self.availableCameras.first(where: { $0.position == .front }) {
                 self.selectedCameraID = front.uniqueID
                 self.switchCamera(cameraID: front.uniqueID)
-            } else if let first = self.availableCameras.first {
-                self.selectedCameraID = first.uniqueID
-                self.switchCamera(cameraID: first.uniqueID)
             }
         }
     }
@@ -127,11 +270,8 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
         
         captureSession.beginConfiguration()
         captureSession.sessionPreset = .hd1920x1080
-        
-        // Remove old camera
         captureSession.inputs.forEach { captureSession.removeInput($0) }
         
-        // Attach new camera
         if let input = try? AVCaptureDeviceInput(device: device), captureSession.canAddInput(input) {
             captureSession.addInput(input)
         }
@@ -142,21 +282,33 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
             if captureSession.canAddOutput(output) { captureSession.addOutput(output) }
         }
         
-        if let output = captureSession.outputs.first as? AVCaptureVideoDataOutput,
-           let connection = output.connection(with: .video) {
-            connection.videoOrientation = .landscapeRight
-            
-            // Flip the feed like a mirror if you switch to the front camera
-            if device.position == .front && connection.isVideoMirroringSupported {
-                connection.isVideoMirrored = true
-            }
+        if let output = captureSession.outputs.first as? AVCaptureVideoDataOutput, let conn = output.connection(with: .video) {
+            conn.videoOrientation = .landscapeRight
+            if device.position == .front && conn.isVideoMirroringSupported { conn.isVideoMirrored = true }
         }
-        
         captureSession.commitConfiguration()
         
-        if !captureSession.isRunning {
-            DispatchQueue.global(qos: .userInitiated).async {
-                self.captureSession.startRunning()
+        if !captureSession.isRunning { DispatchQueue.global(qos: .userInitiated).async { self.captureSession.startRunning() } }
+        updateExposureLock()
+    }
+    
+    func updateExposureLock() {
+        guard let device = availableCameras.first(where: { $0.uniqueID == selectedCameraID }) else { return }
+        do {
+            try device.lockForConfiguration()
+            device.exposureMode = isExposureLocked ? .locked : .continuousAutoExposure
+            device.whiteBalanceMode = isExposureLocked ? .locked : .continuousAutoWhiteBalance
+            device.unlockForConfiguration()
+        } catch {}
+    }
+    
+    func updateScreenBrightness() {
+        DispatchQueue.main.async {
+            if self.isBlackoutMode {
+                self.originalBrightness = UIScreen.main.brightness
+                UIScreen.main.brightness = 0.0
+            } else {
+                UIScreen.main.brightness = self.originalBrightness
             }
         }
     }
@@ -174,71 +326,86 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
     
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
-        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
-        var finalCGImage: CGImage?
+        var ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        let width = ciImage.extent.width
+        let height = ciImage.extent.height
         
-        if isFaceTrackingEnabled {
-            // Hardware Face Detection
-            let request = VNDetectFaceRectanglesRequest { [weak self] req, _ in
-                guard let self = self, let results = req.results as? [VNFaceObservation], let face = results.first else { return }
-                
-                let target = face.boundingBox
-                self.currentFaceRect.origin.x += (target.origin.x - self.currentFaceRect.origin.x) * 0.1
-                self.currentFaceRect.origin.y += (target.origin.y - self.currentFaceRect.origin.y) * 0.1
-                self.currentFaceRect.size.width += (target.size.width - self.currentFaceRect.size.width) * 0.1
-                self.currentFaceRect.size.height += (target.size.height - self.currentFaceRect.size.height) * 0.1
-            }
-            try? VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:]).perform([request])
-            
-            // Safety Cropping Math
-            let width = ciImage.extent.width
-            let height = ciImage.extent.height
-            let faceX = currentFaceRect.origin.x * width
-            let faceY = (1 - currentFaceRect.origin.y - currentFaceRect.size.height) * height
-            let faceW = currentFaceRect.size.width * width
-            let faceH = currentFaceRect.size.height * height
-            
-            let cropW = min(faceW * 2.8, width) // Zoom level
-            let cropH = cropW * (9.0/16.0)
-            let cropX = max(0, min((faceX + faceW/2) - (cropW / 2), width - cropW))
-            let cropY = max(0, min((faceY + faceH/2) - (cropH / 2), height - cropH))
-            
-            let croppedCI = ciImage.cropped(to: CGRect(x: cropX, y: cropY, width: cropW, height: cropH))
-            finalCGImage = CIContext().createCGImage(croppedCI, from: croppedCI.extent)
-        } else {
-            // Send Full Uncropped Frame
-            finalCGImage = CIContext().createCGImage(ciImage, from: ciImage.extent)
+        // 1. Run AI Requests
+        var requests: [VNRequest] = []
+        if isFaceTrackingEnabled { requests.append(faceRequest) }
+        if bgMode != .normal { requests.append(segmentationRequest) }
+        
+        if !requests.isEmpty {
+            try? VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:]).perform(requests)
         }
         
-        guard let outputCG = finalCGImage else { return }
+        // 2. Background Replacement
+        if bgMode != .normal, let maskPixelBuffer = segmentationRequest.results?.first?.pixelBuffer {
+            let maskImage = CIImage(cvPixelBuffer: maskPixelBuffer).transformed(by: CGAffineTransform(scaleX: width / CGFloat(CVPixelBufferGetWidth(maskPixelBuffer)), y: height / CGFloat(CVPixelBufferGetHeight(maskPixelBuffer))))
+            
+            let bgImage: CIImage
+            if bgMode == .blur {
+                let blurFilter = CIFilter.gaussianBlur()
+                blurFilter.inputImage = ciImage
+                blurFilter.radius = Float(blurRadius)
+                bgImage = blurFilter.outputImage?.cropped(to: ciImage.extent) ?? ciImage
+            } else { // Green Screen Cutout for OBS
+                bgImage = CIImage(color: CIColor(red: 0, green: 1, blue: 0)).cropped(to: ciImage.extent)
+            }
+            
+            let blendFilter = CIFilter.blendWithMask()
+            blendFilter.inputImage = ciImage
+            blendFilter.backgroundImage = bgImage
+            blendFilter.maskImage = maskImage
+            ciImage = blendFilter.outputImage ?? ciImage
+        }
+        
+        // 3. Face Tracking & Cropping
+        if isFaceTrackingEnabled, let target = latestFaceRect {
+            currentFaceRect.origin.x += (target.origin.x - currentFaceRect.origin.x) * 0.1
+            currentFaceRect.origin.y += (target.origin.y - currentFaceRect.origin.y) * 0.1
+            currentFaceRect.size.width += (target.size.width - currentFaceRect.size.width) * 0.1
+            currentFaceRect.size.height += (target.size.height - currentFaceRect.size.height) * 0.1
+            
+            let centerX = (currentFaceRect.origin.x + currentFaceRect.size.width / 2.0) * width
+            let centerY = (currentFaceRect.origin.y + currentFaceRect.size.height * 0.45) * height
+            
+            let multiplier = max(1.4, 4.2 / CGFloat(zoomLevel))
+            var cropW = min(width, currentFaceRect.size.width * width * multiplier)
+            var cropH = cropW * (9.0 / 16.0)
+            
+            if cropH > height { cropH = height; cropW = height * (16.0 / 9.0) }
+            
+            var cropX = max(0, min(centerX - (cropW / 2.0), width - cropW))
+            var cropY = max(0, min(centerY - (cropH / 2.0), height - cropH))
+            
+            ciImage = ciImage.cropped(to: CGRect(x: cropX, y: cropY, width: cropW, height: cropH))
+                .transformed(by: CGAffineTransform(translationX: -cropX, y: -cropY))
+                .transformed(by: CGAffineTransform(scaleX: 1920.0 / cropW, y: 1920.0 / cropW))
+        }
+        
+        // 4. Render and Broadcast
+        guard let outputCG = ciContext.createCGImage(ciImage, from: CGRect(x: 0, y: 0, width: 1920, height: 1080)) else { return }
         DispatchQueue.main.async { self.currentFrame = outputCG }
         
-        // Broadcast Stream
-        let uiImage = UIImage(cgImage: outputCG)
-        if let jpeg = uiImage.jpegData(compressionQuality: 0.6) {
-            let header = "--frame\r\nContent-Type: image/jpeg\r\nContent-Length: \(jpeg.count)\r\n\r\n"
-            let data = header.data(using: .utf8)! + jpeg + "\r\n".data(using: .utf8)!
-            self.connections.forEach { conn in
-                conn.send(content: data, completion: .contentProcessed({ _ in }))
-            }
+        if let jpeg = UIImage(cgImage: outputCG).jpegData(compressionQuality: 0.6) {
+            let data = "--frame\r\nContent-Type: image/jpeg\r\nContent-Length: \(jpeg.count)\r\n\r\n".data(using: .utf8)! + jpeg + "\r\n".data(using: .utf8)!
+            connections.forEach { $0.send(content: data, completion: .contentProcessed({ _ })) }
         }
     }
     
-    // Automatically fetches your phone's Local IP Address
     func getWiFiAddress() -> String {
-        var address = "Not Connected to Wi-Fi"
+        var address = "Not Connected"
         var ifaddr: UnsafeMutablePointer<ifaddrs>?
         if getifaddrs(&ifaddr) == 0 {
             var ptr = ifaddr
             while ptr != nil {
                 defer { ptr = ptr?.pointee.ifa_next }
                 guard let interface = ptr?.pointee else { continue }
-                if interface.ifa_addr.pointee.sa_family == UInt8(AF_INET) {
-                    if String(cString: interface.ifa_name) == "en0" {
-                        var hostname = [CChar](repeating: 0, count: Int(NI_MAXHOST))
-                        getnameinfo(interface.ifa_addr, socklen_t(interface.ifa_addr.pointee.sa_len), &hostname, socklen_t(hostname.count), nil, socklen_t(0), NI_NUMERICHOST)
-                        address = "http://\(String(cString: hostname)):8080"
-                    }
+                if interface.ifa_addr.pointee.sa_family == UInt8(AF_INET), String(cString: interface.ifa_name) == "en0" {
+                    var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+                    getnameinfo(interface.ifa_addr, socklen_t(interface.ifa_addr.pointee.sa_len), &host, socklen_t(host.count), nil, socklen_t(0), NI_NUMERICHOST)
+                    address = String(cString: host)
                 }
             }
             freeifaddrs(ifaddr)
