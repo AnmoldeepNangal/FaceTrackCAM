@@ -3,9 +3,8 @@ import AVFoundation
 import Vision
 import Network
 import CoreImage.CIFilterBuiltins
-import PhotosUI // Required for native photo picker
+import PhotosUI
 
-// 1. Define our background modes
 enum BackgroundMode: String, CaseIterable {
     case none = "Off"
     case blur = "Blur"
@@ -26,8 +25,6 @@ struct ContentView: View {
     @StateObject var camera = CameraTracker()
     @State private var isBlackoutMode = false
     @State private var previousBrightness: CGFloat = 0.5
-    
-    // State for the native photo picker
     @State private var selectedItem: PhotosPickerItem?
     
     var body: some View {
@@ -123,7 +120,7 @@ struct ContentView: View {
                                 .padding(.horizontal, 10)
                                 .background(Color.gray.opacity(0.3))
                                 .cornerRadius(8)
-                                .onChange(of: camera.selectedCameraID) { newID in
+                                .onChange(of: camera.selectedCameraID) { _, newID in
                                     camera.switchCamera(cameraID: newID)
                                 }
                                 
@@ -154,9 +151,8 @@ struct ContentView: View {
                                     .background(Color.blue)
                                     .cornerRadius(8)
                                 }
-                                .onChange(of: selectedItem) { newItem in
+                                .onChange(of: selectedItem) { _, newItem in
                                     Task {
-                                        // Load the photo as Data, convert to UIImage, then to CIImage
                                         if let data = try? await newItem?.loadTransferable(type: Data.self),
                                            let uiImage = UIImage(data: data),
                                            let ciImage = CIImage(image: uiImage) {
@@ -184,7 +180,7 @@ struct ContentView: View {
                                 .padding(10)
                                 .background(Color.black.opacity(0.7))
                                 .cornerRadius(8)
-                                .onChange(of: camera.isExposureLocked) { locked in
+                                .onChange(of: camera.isExposureLocked) { _, locked in
                                     camera.toggleExposureLock(lock: locked)
                                 }
                         }
@@ -319,7 +315,6 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         var currentCIImage = CIImage(cvPixelBuffer: pixelBuffer)
         
-        // 1. Hardware Background Replacement Switch
         if backgroundMode != .none {
             try? VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:]).perform([segmentationRequest])
             if let maskPixelBuffer = segmentationRequest.results?.first?.pixelBuffer {
@@ -339,12 +334,11 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
                     generatedBackground = blurFilter.outputImage?.cropped(to: currentCIImage.extent)
                     
                 case .greenScreen:
-                    // Solid Green output for OBS Chroma Keying
-                    generatedBackground = CIImage(color: .green).cropped(to: currentCIImage.extent)
+                    // Fix: Use CIColor instead of SwiftUI Color for CoreImage
+                    generatedBackground = CIImage(color: CIColor(red: 0, green: 1, blue: 0)).cropped(to: currentCIImage.extent)
                     
                 case .customImage:
                     if let customImg = customBackgroundImage {
-                        // Math to Aspect-Fill the custom image without stretching it
                         let scale = max(currentCIImage.extent.width / customImg.extent.width,
                                         currentCIImage.extent.height / customImg.extent.height)
                         
@@ -374,7 +368,6 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
         
         var finalCGImage: CGImage?
         
-        // 2. Face Tracking & Cropping
         if isFaceTrackingEnabled {
             let request = VNDetectFaceRectanglesRequest { [weak self] req, _ in
                 guard let self = self, let results = req.results as? [VNFaceObservation], let face = results.first else { return }
