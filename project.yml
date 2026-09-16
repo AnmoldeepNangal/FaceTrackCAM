@@ -5,7 +5,7 @@ targets:
   FaceTrackCam:
     type: application
     platform: iOS
-    deploymentTarget: "16.0"
+    deploymentTarget: "17.0"
     sources:
       - path: . # Adjust if your source files are in a specific subfolder
     settings:
