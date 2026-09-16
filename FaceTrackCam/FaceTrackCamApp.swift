@@ -47,112 +47,108 @@ struct ContentView: View {
 
     var body: some View {
 
-        GeometryReader { geometry in
+        ZStack {
 
-            ZStack {
+            // ====================================================
+            // 1. CAMERA LAYER (ABSOLUTE FULL SCREEN)
+            // ====================================================
 
-                // ====================================================
-                // 1. CAMERA LAYER (ABSOLUTE FULL SCREEN)
-                // ====================================================
+            Color.black
+                .ignoresSafeArea() // Fallback background
 
-                Color.black // Fallback background
+            if let frame = camera.currentFrame {
 
-                if let frame = camera.currentFrame {
+                Image(
+                    decorative: frame,
+                    scale: 1.0,
+                    orientation: .up
+                )
+                .resizable()
+                .scaledToFill() // Stretches to fill bounds
+                .frame(
+                    minWidth: 0, 
+                    maxWidth: .infinity, 
+                    minHeight: 0, 
+                    maxHeight: .infinity
+                )
+                .ignoresSafeArea() // Magic bullet: Ignores the notch and home bar entirely
 
-                    Image(
-                        decorative: frame,
-                        scale: 1.0,
-                        orientation: .up
+            } else {
+
+                ProgressView()
+                    .progressViewStyle(
+                        CircularProgressViewStyle(tint: .white)
                     )
-                    .resizable()
-                    .scaledToFill() // Forces the image to fill the entire frame
-                    .frame(
-                        width: geometry.size.width,
-                        height: geometry.size.height
-                    )
-                    .clipped()
+            }
 
-                } else {
+            // ====================================================
+            // 2. UI OVERLAY LAYER
+            // ====================================================
 
-                    ProgressView()
-                        .progressViewStyle(
-                            CircularProgressViewStyle(tint: .white)
+            if isBlackoutMode {
+
+                // BLACKOUT MODE OVERLAY
+                Color.black
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        wakeFromBlackout()
+                    }
+
+                VStack(spacing: 12) {
+
+                    Image(systemName: "moon.zzz.fill")
+                        .font(.system(size: 42))
+                        .foregroundColor(.gray)
+
+                    Text("BLACKOUT MODE")
+                        .font(
+                            .system(
+                                size: 16,
+                                weight: .semibold
+                            )
                         )
+                        .foregroundColor(.gray)
+
+                    Text("Tap anywhere to wake")
+                        .font(.system(size: 13))
+                        .foregroundColor(.gray.opacity(0.7))
                 }
 
-                // ====================================================
-                // 2. UI OVERLAY LAYER
-                // ====================================================
+            } else {
 
-                if isBlackoutMode {
+                // CAMERA CONTROLS
+                VStack(spacing: 0) {
 
-                    // BLACKOUT MODE OVERLAY
-                    Color.black
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            wakeFromBlackout()
-                        }
-
-                    VStack(spacing: 12) {
-
-                        Image(systemName: "moon.zzz.fill")
-                            .font(.system(size: 42))
-                            .foregroundColor(.gray)
-
-                        Text("BLACKOUT MODE")
-                            .font(
-                                .system(
-                                    size: 16,
-                                    weight: .semibold
-                                )
+                    topControls
+                        .padding(.top, 12)
+                        .padding(.bottom, 24)
+                        .background(
+                            LinearGradient(
+                                gradient: Gradient(colors: [Color.black.opacity(0.7), Color.clear]),
+                                startPoint: .top,
+                                endPoint: .bottom
                             )
-                            .foregroundColor(.gray)
+                            .ignoresSafeArea(.all, edges: .top) // Pushes gradient behind the notch
+                        )
 
-                        Text("Tap anywhere to wake")
-                            .font(.system(size: 13))
-                            .foregroundColor(.gray.opacity(0.7))
-                    }
+                    Spacer(minLength: 0)
 
-                } else {
-
-                    // CAMERA CONTROLS
-                    VStack(spacing: 0) {
-
-                        topControls
-                            .padding(.top, geometry.safeAreaInsets.top + 8)
-                            .padding(.bottom, 16)
-                            .background(
-                                LinearGradient(
-                                    gradient: Gradient(colors: [Color.black.opacity(0.75), Color.clear]),
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
+                    bottomControls
+                        .padding(.top, 32)
+                        .padding(.bottom, 12)
+                        .background(
+                            LinearGradient(
+                                gradient: Gradient(colors: [Color.clear, Color.black.opacity(0.5), Color.black.opacity(0.8)]),
+                                startPoint: .top,
+                                endPoint: .bottom
                             )
-
-                        Spacer(minLength: 0)
-
-                        bottomControls
-                            .padding(.top, 24)
-                            .padding(
-                                .bottom,
-                                geometry.safeAreaInsets.bottom > 0
-                                ? geometry.safeAreaInsets.bottom
-                                : 15
-                            )
-                            .background(
-                                LinearGradient(
-                                    gradient: Gradient(colors: [Color.clear, Color.black.opacity(0.6), Color.black.opacity(0.9)]),
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
-                            )
-                    }
+                            .ignoresSafeArea(.all, edges: .bottom) // Pushes gradient behind home bar
+                        )
                 }
             }
         }
-        .ignoresSafeArea(.all) // CRITICAL: This allows the app to go edge-to-edge
         .onAppear {
-
             UIDevice.current.isBatteryMonitoringEnabled = true
             camera.updateBattery()
         }
