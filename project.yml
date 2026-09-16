@@ -1,0 +1,16 @@
+name: FaceTrackCam
+options:
+  bundleIdPrefix: com.custom
+targets:
+  FaceTrackCam:
+    type: application
+    platform: iOS
+    deploymentTarget: "15.0"
+    sources: 
+      - FaceTrackCam
+    info:
+      properties:
+        CFBundleShortVersionString: "1.0"
+        CFBundleVersion: "1"
+        NSCameraUsageDescription: "Needs camera for OBS streaming"
+        UILaunchScreen: {}
