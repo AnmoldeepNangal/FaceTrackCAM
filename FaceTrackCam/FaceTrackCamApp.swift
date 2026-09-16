@@ -46,48 +46,17 @@ struct ContentView: View {
     @State private var backgroundPickerItem: PhotosPickerItem?
 
     var body: some View {
-
+        
+        // ZStack provides the universal black background
         ZStack {
-
-            // ====================================================
-            // 1. CAMERA LAYER (ABSOLUTE FULL SCREEN)
-            // ====================================================
-
-            Color.black
-                .ignoresSafeArea() // Fallback background
-
-            if let frame = camera.currentFrame {
-
-                Image(
-                    decorative: frame,
-                    scale: 1.0,
-                    orientation: .up
-                )
-                .resizable()
-                .scaledToFill() // Stretches to fill bounds
-                .frame(
-                    minWidth: 0, 
-                    maxWidth: .infinity, 
-                    minHeight: 0, 
-                    maxHeight: .infinity
-                )
-                .ignoresSafeArea() // Magic bullet: Ignores the notch and home bar entirely
-
-            } else {
-
-                ProgressView()
-                    .progressViewStyle(
-                        CircularProgressViewStyle(tint: .white)
-                    )
-            }
-
-            // ====================================================
-            // 2. UI OVERLAY LAYER
-            // ====================================================
+            Color.black.ignoresSafeArea()
 
             if isBlackoutMode {
-
-                // BLACKOUT MODE OVERLAY
+                
+                // ====================================================
+                // BLACKOUT MODE
+                // ====================================================
+                
                 Color.black
                     .ignoresSafeArea()
                     .contentShape(Rectangle())
@@ -96,18 +65,12 @@ struct ContentView: View {
                     }
 
                 VStack(spacing: 12) {
-
                     Image(systemName: "moon.zzz.fill")
                         .font(.system(size: 42))
                         .foregroundColor(.gray)
 
                     Text("BLACKOUT MODE")
-                        .font(
-                            .system(
-                                size: 16,
-                                weight: .semibold
-                            )
-                        )
+                        .font(.system(size: 16, weight: .semibold))
                         .foregroundColor(.gray)
 
                     Text("Tap anywhere to wake")
@@ -116,35 +79,38 @@ struct ContentView: View {
                 }
 
             } else {
-
-                // CAMERA CONTROLS
+                
+                // ====================================================
+                // STRICT LETTERBOX UI
+                // ====================================================
+                
                 VStack(spacing: 0) {
-
+                    
+                    // --- TOP BLACK BAR ---
                     topControls
-                        .padding(.top, 12)
-                        .padding(.bottom, 24)
-                        .background(
-                            LinearGradient(
-                                gradient: Gradient(colors: [Color.black.opacity(0.7), Color.clear]),
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                            .ignoresSafeArea(.all, edges: .top) // Pushes gradient behind the notch
-                        )
-
+                        .padding(.vertical, 12)
+                    
                     Spacer(minLength: 0)
-
-                    bottomControls
-                        .padding(.top, 32)
-                        .padding(.bottom, 12)
-                        .background(
-                            LinearGradient(
-                                gradient: Gradient(colors: [Color.clear, Color.black.opacity(0.5), Color.black.opacity(0.8)]),
-                                startPoint: .top,
-                                endPoint: .bottom
+                    
+                    // --- CENTER CAMERA FEED (Strict 16:9) ---
+                    if let frame = camera.currentFrame {
+                        Image(decorative: frame, scale: 1.0, orientation: .up)
+                            .resizable()
+                            .aspectRatio(9/16, contentMode: .fit)
+                            .clipped()
+                    } else {
+                        Color.black
+                            .aspectRatio(9/16, contentMode: .fit)
+                            .overlay(
+                                ProgressView().progressViewStyle(CircularProgressViewStyle(tint: .white))
                             )
-                            .ignoresSafeArea(.all, edges: .bottom) // Pushes gradient behind home bar
-                        )
+                    }
+                    
+                    Spacer(minLength: 0)
+                    
+                    // --- BOTTOM BLACK BAR ---
+                    bottomControls
+                        .padding(.vertical, 16)
                 }
             }
         }
@@ -155,432 +121,167 @@ struct ContentView: View {
     }
 
     // ============================================================
-    // MARK: - TOP CONTROLS
+    // MARK: - TOP CONTROLS (Minimalist)
     // ============================================================
 
     private var topControls: some View {
 
-        HStack(spacing: 12) {
+        HStack(spacing: 16) {
 
-            // --------------------------------------------------------
             // BATTERY
-            // --------------------------------------------------------
-
-            HStack(spacing: 5) {
-
-                Image(
-                    systemName:
-                        camera.batteryLevel > 0.20
-                        ? "battery.100"
-                        : "battery.25"
-                )
-
-                Text(
-                    "\(Int(camera.batteryLevel * 100))%"
-                )
+            HStack(spacing: 4) {
+                Image(systemName: camera.batteryLevel > 0.20 ? "battery.100" : "battery.25")
+                Text("\(Int(camera.batteryLevel * 100))%")
             }
-            .font(
-                .system(
-                    size: 14,
-                    weight: .semibold
-                )
-            )
+            .font(.system(size: 14, weight: .medium))
             .foregroundColor(.white)
 
             Spacer()
 
-            // --------------------------------------------------------
-            // SERVER ADDRESS
-            // --------------------------------------------------------
-
+            // SERVER ADDRESS (Green)
             Text(camera.getWiFiAddress())
-                .font(
-                    .system(
-                        size: 13,
-                        weight: .bold,
-                        design: .monospaced
-                    )
-                )
-                .foregroundColor(.yellow)
+                .font(.system(size: 13, weight: .bold, design: .monospaced))
+                .foregroundColor(.green)
                 .lineLimit(1)
                 .minimumScaleFactor(0.65)
 
             Spacer()
 
-            // --------------------------------------------------------
-            // BLACKOUT
-            // --------------------------------------------------------
-
+            // BLACKOUT TOGGLE
             Button {
-
                 enterBlackout()
-
             } label: {
-
                 Image(systemName: "moon.fill")
-                    .font(
-                        .system(
-                            size: 18,
-                            weight: .medium
-                        )
-                    )
+                    .font(.system(size: 20))
                     .foregroundColor(.white)
-                    .frame(
-                        width: 42,
-                        height: 42
-                    )
-                    .background(
-                        Color.white.opacity(0.15)
-                    )
-                    .clipShape(Circle())
+                    .frame(width: 32, height: 32) // Invisible tap target
             }
         }
-        .padding(.horizontal, 18)
+        .padding(.horizontal, 20)
     }
 
     // ============================================================
-    // MARK: - BOTTOM CONTROLS
+    // MARK: - BOTTOM CONTROLS (Minimalist Native Style)
     // ============================================================
 
     private var bottomControls: some View {
 
-        VStack(spacing: 12) {
+        VStack(spacing: 24) {
 
-            // ========================================================
-            // ZOOM
-            // ========================================================
+            // --- ZOOM SLIDER ---
+            HStack(spacing: 12) {
+                Text(String(format: "%.1fx", camera.zoomIntensity))
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(.green)
+                    .frame(width: 36, alignment: .leading)
 
-            HStack(spacing: 10) {
-
-                Text(
-                    String(
-                        format: "%.1fx",
-                        camera.zoomIntensity
-                    )
-                )
-                .font(
-                    .system(
-                        size: 14,
-                        weight: .bold
-                    )
-                )
-                .foregroundColor(.yellow)
-                .frame(
-                    width: 42,
-                    alignment: .leading
-                )
-
-                Slider(
-                    value: $camera.zoomIntensity,
-                    in: 1.0...4.0,
-                    step: 0.1
-                )
-                .tint(.yellow)
+                Slider(value: $camera.zoomIntensity, in: 1.0...4.0, step: 0.1)
+                    .tint(.green)
 
                 Image(systemName: "plus.magnifyingglass")
                     .font(.system(size: 15))
-                    .foregroundColor(.white.opacity(0.75))
+                    .foregroundColor(.white)
             }
-            .padding(.horizontal, 22)
+            .padding(.horizontal, 32)
 
-            // ========================================================
-            // BACKGROUND CONTROLS
-            // ========================================================
-
-            HStack(spacing: 7) {
-
-                ForEach(
-                    BackgroundMode.allCases,
-                    id: \.self
-                ) { mode in
-
+            // --- BACKGROUND MODES (Text Only) ---
+            HStack(spacing: 28) {
+                ForEach(BackgroundMode.allCases, id: \.self) { mode in
                     Button {
-
-                        withAnimation(
-                            .easeOut(duration: 0.15)
-                        ) {
+                        withAnimation(.easeOut(duration: 0.15)) {
                             camera.backgroundMode = mode
                         }
-
                     } label: {
-
                         Text(mode.rawValue)
-                            .font(
-                                .system(
-                                    size: 12,
-                                    weight: .bold
-                                )
-                            )
-                            .foregroundColor(
-                                camera.backgroundMode == mode
-                                ? .black
-                                : .white.opacity(0.80)
-                            )
-                            .frame(
-                                maxWidth: .infinity
-                            )
-                            .frame(height: 38)
-                            .background(
-                                camera.backgroundMode == mode
-                                ? Color.yellow
-                                : Color.white.opacity(0.13)
-                            )
-                            .clipShape(Capsule())
+                            .font(.system(size: 12, weight: camera.backgroundMode == mode ? .bold : .medium))
+                            .foregroundColor(camera.backgroundMode == mode ? .green : .white.opacity(0.6))
                     }
                 }
 
-                // ----------------------------------------------------
-                // CUSTOM IMAGE
-                // ----------------------------------------------------
-
+                // Custom Image Icon (Appears when Custom is selected)
                 if camera.backgroundMode == .custom {
-
-                    PhotosPicker(
-                        selection: $backgroundPickerItem,
-                        matching: .images
-                    ) {
-
-                        Image(
-                            systemName:
-                                camera.hasCustomBackground
-                                ? "photo.fill"
-                                : "photo.badge.plus"
-                        )
-                        .font(
-                            .system(
-                                size: 17,
-                                weight: .semibold
-                            )
-                        )
-                        .foregroundColor(
-                            camera.hasCustomBackground
-                            ? .yellow
-                            : .white
-                        )
-                        .frame(
-                            width: 44,
-                            height: 38
-                        )
-                        .background(
-                            Color.white.opacity(0.13)
-                        )
-                        .clipShape(Capsule())
+                    PhotosPicker(selection: $backgroundPickerItem, matching: .images) {
+                        Image(systemName: camera.hasCustomBackground ? "photo.fill" : "photo.badge.plus")
+                            .font(.system(size: 16))
+                            .foregroundColor(camera.hasCustomBackground ? .green : .white)
                     }
-                    .onChange(
-                        of: backgroundPickerItem
-                    ) { _, item in
-
-                        guard let item else {
-                            return
-                        }
-
+                    .onChange(of: backgroundPickerItem) { _, item in
+                        guard let item = item else { return }
                         Task {
-
-                            if let data =
-                                try? await item.loadTransferable(
-                                    type: Data.self
-                                ),
-                               let image =
-                                UIImage(data: data) {
-
-                                camera.setCustomBackground(
-                                    uiImage: image
-                                )
+                            if let data = try? await item.loadTransferable(type: Data.self),
+                               let image = UIImage(data: data) {
+                                camera.setCustomBackground(uiImage: image)
                             }
                         }
                     }
                 }
             }
-            .padding(.horizontal, 18)
 
-            // ========================================================
-            // MAIN ACTION BUTTONS
-            // ========================================================
-
+            // --- SHUTTER ROW ---
             HStack {
-
-                // ----------------------------------------------------
-                // CAMERA / LENS
-                // ----------------------------------------------------
-
+                
+                // 1. CAMERA LENS SWAP
                 Menu {
-
-                    Picker(
-                        "Camera",
-                        selection: $camera.selectedCameraID
-                    ) {
-
-                        ForEach(
-                            camera.availableCameras,
-                            id: \.uniqueID
-                        ) { device in
-
-                            Text(
-                                device.localizedName
-                            )
-                            .tag(device.uniqueID)
+                    Picker("Camera", selection: $camera.selectedCameraID) {
+                        ForEach(camera.availableCameras, id: \.uniqueID) { device in
+                            Text(device.localizedName).tag(device.uniqueID)
                         }
                     }
-
                 } label: {
-
-                    Image(
-                        systemName: "camera.aperture"
-                    )
-                    .font(
-                        .system(
-                            size: 23,
-                            weight: .medium
-                        )
-                    )
-                    .foregroundColor(.white)
-                    .frame(
-                        width: 54,
-                        height: 54
-                    )
-                    .background(
-                        Color.white.opacity(0.12)
-                    )
-                    .clipShape(Circle())
-                    .overlay(
-                        Circle()
-                            .stroke(
-                                Color.white.opacity(0.20),
-                                lineWidth: 1
-                            )
-                    )
+                    Image(systemName: "arrow.triangle.2.circlepath.camera")
+                        .font(.system(size: 24, weight: .regular))
+                        .foregroundColor(.white)
+                        .frame(width: 50, height: 50) // Tap target
                 }
-                .onChange(
-                    of: camera.selectedCameraID
-                ) { _, newID in
-
-                    camera.switchCamera(
-                        cameraID: newID
-                    )
+                .onChange(of: camera.selectedCameraID) { _, newID in
+                    camera.switchCamera(cameraID: newID)
                 }
 
                 Spacer()
 
-                // ----------------------------------------------------
-                // FACE TRACKING
-                // ----------------------------------------------------
-
+                // 2. FACE TRACKING (Native Shutter Style)
                 Button {
-
-                    withAnimation(
-                        .spring(
-                            response: 0.25,
-                            dampingFraction: 0.75
-                        )
-                    ) {
-
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
                         camera.isFaceTrackingEnabled.toggle()
                     }
-
                 } label: {
-
-                    Image(
-                        systemName:
-                            camera.isFaceTrackingEnabled
-                            ? "person.and.background.dotted"
-                            : "person.fill"
-                    )
-                    .font(
-                        .system(
-                            size: 26,
-                            weight: .medium
-                        )
-                    )
-                    .foregroundColor(
-                        camera.isFaceTrackingEnabled
-                        ? .black
-                        : .white
-                    )
-                    .frame(
-                        width: 70,
-                        height: 70
-                    )
-                    .background(
-                        camera.isFaceTrackingEnabled
-                        ? Color.yellow
-                        : Color.white.opacity(0.15)
-                    )
-                    .clipShape(Circle())
-                    .overlay(
+                    ZStack {
+                        // Outer Ring
                         Circle()
-                            .stroke(
-                                Color.white,
-                                lineWidth: 2.5
-                            )
-                    )
-                    .shadow(
-                        color: .black.opacity(0.45),
-                        radius: 8
-                    )
+                            .stroke(Color.white, lineWidth: 3.5)
+                            .frame(width: 72, height: 72)
+                        
+                        // Inner circle (Green when on, White when off)
+                        Circle()
+                            .fill(camera.isFaceTrackingEnabled ? Color.green : Color.white)
+                            .frame(width: 58, height: 58)
+                        
+                        // Icon inside
+                        Image(systemName: camera.isFaceTrackingEnabled ? "person.and.background.dotted" : "person.fill")
+                            .font(.system(size: 24, weight: .medium))
+                            .foregroundColor(.black)
+                    }
                 }
 
                 Spacer()
 
-                // ----------------------------------------------------
-                // AE / AF LOCK
-                // ----------------------------------------------------
-
+                // 3. AE / AF LOCK
                 Button {
-
-                    withAnimation(
-                        .easeOut(duration: 0.15)
-                    ) {
-
+                    withAnimation(.easeOut(duration: 0.15)) {
                         camera.isExposureLocked.toggle()
                     }
-
                 } label: {
-
-                    Image(
-                        systemName:
-                            camera.isExposureLocked
-                            ? "lock.fill"
-                            : "lock.open.fill"
-                    )
-                    .font(
-                        .system(
-                            size: 22,
-                            weight: .medium
-                        )
-                    )
-                    .foregroundColor(
-                        camera.isExposureLocked
-                        ? .yellow
-                        : .white
-                    )
-                    .frame(
-                        width: 54,
-                        height: 54
-                    )
-                    .background(
-                        Color.white.opacity(0.12)
-                    )
-                    .clipShape(Circle())
-                    .overlay(
-                        Circle()
-                            .stroke(
-                                Color.white.opacity(0.20),
-                                lineWidth: 1
-                            )
-                    )
+                    Image(systemName: camera.isExposureLocked ? "lock.fill" : "lock.open")
+                        .font(.system(size: 24, weight: .regular))
+                        .foregroundColor(camera.isExposureLocked ? .green : .white)
+                        .frame(width: 50, height: 50) // Tap target
                 }
-                .onChange(
-                    of: camera.isExposureLocked
-                ) { _, locked in
-
-                    camera.toggleExposureLock(
-                        lock: locked
-                    )
+                .onChange(of: camera.isExposureLocked) { _, locked in
+                    camera.toggleExposureLock(lock: locked)
                 }
             }
-            .padding(.horizontal, 28)
-            .padding(.top, 4)
-            .padding(.bottom, 6)
+            .padding(.horizontal, 40)
+            .padding(.bottom, 8)
         }
     }
 
@@ -590,28 +291,19 @@ struct ContentView: View {
 
     private func enterBlackout() {
 
-        previousBrightness =
-            UIScreen.main.brightness
-
+        previousBrightness = UIScreen.main.brightness
         UIScreen.main.brightness = 0.0
 
-        withAnimation(
-            .easeInOut(duration: 0.2)
-        ) {
-
+        withAnimation(.easeInOut(duration: 0.2)) {
             isBlackoutMode = true
         }
     }
 
     private func wakeFromBlackout() {
 
-        UIScreen.main.brightness =
-            previousBrightness
+        UIScreen.main.brightness = previousBrightness
 
-        withAnimation(
-            .easeInOut(duration: 0.2)
-        ) {
-
+        withAnimation(.easeInOut(duration: 0.2)) {
             isBlackoutMode = false
         }
     }
@@ -621,70 +313,42 @@ struct ContentView: View {
 // MARK: - CAMERA TRACKER
 // ============================================================
 
-final class CameraTracker:
-    NSObject,
-    ObservableObject,
-    AVCaptureVideoDataOutputSampleBufferDelegate {
+final class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleBufferDelegate {
 
     // ============================================================
     // PUBLISHED UI STATE
     // ============================================================
 
     @Published var currentFrame: CGImage?
-
     @Published var isFaceTrackingEnabled = true
-
     @Published var backgroundMode: BackgroundMode = .off
-
     @Published var isExposureLocked = false
-
     @Published var zoomIntensity: CGFloat = 2.8
-
     @Published var availableCameras: [AVCaptureDevice] = []
-
     @Published var selectedCameraID: String = ""
-
     @Published var batteryLevel: Float = 1.0
-
     @Published var thermalString: String = "Normal"
-
     @Published var thermalColor: Color = .green
 
     // ============================================================
     // CAMERA
     // ============================================================
 
-    private let captureSession =
-        AVCaptureSession()
-
-    private let videoQueue =
-        DispatchQueue(
-            label: "com.facetrackcam.videoQueue",
-            qos: .userInitiated
-        )
-
-    private let context =
-        CIContext()
+    private let captureSession = AVCaptureSession()
+    private let videoQueue = DispatchQueue(label: "com.facetrackcam.videoQueue", qos: .userInitiated)
+    private let context = CIContext()
 
     // ============================================================
     // FACE TRACKING
     // ============================================================
 
-    private var currentFaceRect =
-        CGRect(
-            x: 0.25,
-            y: 0.25,
-            width: 0.50,
-            height: 0.50
-        )
+    private var currentFaceRect = CGRect(x: 0.25, y: 0.25, width: 0.50, height: 0.50)
 
     // ============================================================
     // BACKGROUND
     // ============================================================
 
-    private let segmentationRequest =
-        VNGeneratePersonSegmentationRequest()
-
+    private let segmentationRequest = VNGeneratePersonSegmentationRequest()
     private var customBackgroundImage: CIImage?
 
     var hasCustomBackground: Bool {
@@ -696,9 +360,7 @@ final class CameraTracker:
     // ============================================================
 
     private var listener: NWListener?
-
-    private var connections:
-        [NWConnection] = []
+    private var connections: [NWConnection] = []
 
     // ============================================================
     // HARDWARE
@@ -711,33 +373,21 @@ final class CameraTracker:
     // ============================================================
 
     override init() {
-
         super.init()
 
-        segmentationRequest.qualityLevel =
-            .balanced
-
-        segmentationRequest.outputPixelFormat =
-            kCVPixelFormatType_OneComponent8
+        segmentationRequest.qualityLevel = .balanced
+        segmentationRequest.outputPixelFormat = kCVPixelFormatType_OneComponent8
 
         loadCameras()
-
         startMJPEGServer()
-
         startHardwareMonitor()
     }
 
     deinit {
-
         timer?.invalidate()
-
         listener?.cancel()
-
         captureSession.stopRunning()
-
-        connections.forEach {
-            $0.cancel()
-        }
+        connections.forEach { $0.cancel() }
     }
 
     // ============================================================
@@ -745,11 +395,8 @@ final class CameraTracker:
     // ============================================================
 
     func updateBattery() {
-
         DispatchQueue.main.async {
-
-            self.batteryLevel =
-                UIDevice.current.batteryLevel
+            self.batteryLevel = UIDevice.current.batteryLevel
         }
     }
 
@@ -757,26 +404,10 @@ final class CameraTracker:
     // MARK: - CUSTOM BACKGROUND
     // ============================================================
 
-    func setCustomBackground(
-        uiImage: UIImage
-    ) {
-
-        guard
-            let ciImage =
-                CIImage(
-                    image: uiImage,
-                    options: [
-                        .applyOrientationProperty: true
-                    ]
-                )
-        else {
-            return
-        }
-
+    func setCustomBackground(uiImage: UIImage) {
+        guard let ciImage = CIImage(image: uiImage, options: [.applyOrientationProperty: true]) else { return }
         videoQueue.async { [weak self] in
-
-            self?.customBackgroundImage =
-                ciImage
+            self?.customBackgroundImage = ciImage
         }
     }
 
@@ -784,60 +415,19 @@ final class CameraTracker:
     // MARK: - SCALE IMAGE TO FILL
     // ============================================================
 
-    private func scaledToFill(
-        image: CIImage,
-        targetSize: CGSize
-    ) -> CIImage {
-
+    private func scaledToFill(image: CIImage, targetSize: CGSize) -> CIImage {
         let extent = image.extent
+        guard extent.width > 0, extent.height > 0, targetSize.width > 0, targetSize.height > 0 else { return image }
 
-        guard
-            extent.width > 0,
-            extent.height > 0,
-            targetSize.width > 0,
-            targetSize.height > 0
-        else {
-            return image
-        }
-
-        let scale = max(
-            targetSize.width / extent.width,
-            targetSize.height / extent.height
-        )
-
-        let scaled = image.transformed(
-            by: CGAffineTransform(
-                scaleX: scale,
-                y: scale
-            )
-        )
-
+        let scale = max(targetSize.width / extent.width, targetSize.height / extent.height)
+        let scaled = image.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
         let scaledExtent = scaled.extent
 
-        let cropX =
-            scaledExtent.origin.x +
-            (scaledExtent.width - targetSize.width) / 2
+        let cropX = scaledExtent.origin.x + (scaledExtent.width - targetSize.width) / 2
+        let cropY = scaledExtent.origin.y + (scaledExtent.height - targetSize.height) / 2
+        let cropRect = CGRect(x: cropX, y: cropY, width: targetSize.width, height: targetSize.height)
 
-        let cropY =
-            scaledExtent.origin.y +
-            (scaledExtent.height - targetSize.height) / 2
-
-        let cropRect =
-            CGRect(
-                x: cropX,
-                y: cropY,
-                width: targetSize.width,
-                height: targetSize.height
-            )
-
-        return scaled
-            .cropped(to: cropRect)
-            .transformed(
-                by: CGAffineTransform(
-                    translationX: -cropRect.origin.x,
-                    y: -cropRect.origin.y
-                )
-            )
+        return scaled.cropped(to: cropRect).transformed(by: CGAffineTransform(translationX: -cropRect.origin.x, y: -cropRect.origin.y))
     }
 
     // ============================================================
@@ -845,61 +435,34 @@ final class CameraTracker:
     // ============================================================
 
     private func startHardwareMonitor() {
-
         DispatchQueue.main.async {
-
-            self.batteryLevel =
-                UIDevice.current.batteryLevel
-
+            self.batteryLevel = UIDevice.current.batteryLevel
             self.updateThermalState()
 
-            self.timer =
-                Timer.scheduledTimer(
-                    withTimeInterval: 5.0,
-                    repeats: true
-                ) { [weak self] _ in
-
-                    guard let self else {
-                        return
-                    }
-
-                    self.batteryLevel =
-                        UIDevice.current.batteryLevel
-
-                    self.updateThermalState()
-                }
+            self.timer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
+                guard let self else { return }
+                self.batteryLevel = UIDevice.current.batteryLevel
+                self.updateThermalState()
+            }
         }
     }
 
     private func updateThermalState() {
-
-        let state =
-            ProcessInfo.processInfo.thermalState
-
+        let state = ProcessInfo.processInfo.thermalState
         switch state {
-
         case .nominal:
-
             thermalString = "Normal"
             thermalColor = .green
-
         case .fair:
-
             thermalString = "Warm"
             thermalColor = .yellow
-
         case .serious:
-
             thermalString = "Hot"
             thermalColor = .orange
-
         case .critical:
-
             thermalString = "Critical"
             thermalColor = .red
-
         @unknown default:
-
             thermalString = "Unknown"
             thermalColor = .gray
         }
@@ -909,87 +472,24 @@ final class CameraTracker:
     // MARK: - EXPOSURE / FOCUS LOCK
     // ============================================================
 
-    func toggleExposureLock(
-        lock: Bool
-    ) {
-
-        guard
-            let input =
-                captureSession.inputs
-                    .compactMap({
-                        $0 as? AVCaptureDeviceInput
-                    })
-                    .first
-        else {
-            return
-        }
-
+    func toggleExposureLock(lock: Bool) {
+        guard let input = captureSession.inputs.compactMap({ $0 as? AVCaptureDeviceInput }).first else { return }
         let device = input.device
 
         do {
-
             try device.lockForConfiguration()
-
             if lock {
-
-                if device.isExposureModeSupported(
-                    .locked
-                ) {
-
-                    device.exposureMode =
-                        .locked
-                }
-
-                if device.isWhiteBalanceModeSupported(
-                    .locked
-                ) {
-
-                    device.whiteBalanceMode =
-                        .locked
-                }
-
-                if device.isFocusModeSupported(
-                    .locked
-                ) {
-
-                    device.focusMode =
-                        .locked
-                }
-
+                if device.isExposureModeSupported(.locked) { device.exposureMode = .locked }
+                if device.isWhiteBalanceModeSupported(.locked) { device.whiteBalanceMode = .locked }
+                if device.isFocusModeSupported(.locked) { device.focusMode = .locked }
             } else {
-
-                if device.isExposureModeSupported(
-                    .continuousAutoExposure
-                ) {
-
-                    device.exposureMode =
-                        .continuousAutoExposure
-                }
-
-                if device.isWhiteBalanceModeSupported(
-                    .continuousAutoWhiteBalance
-                ) {
-
-                    device.whiteBalanceMode =
-                        .continuousAutoWhiteBalance
-                }
-
-                if device.isFocusModeSupported(
-                    .continuousAutoFocus
-                ) {
-
-                    device.focusMode =
-                        .continuousAutoFocus
-                }
+                if device.isExposureModeSupported(.continuousAutoExposure) { device.exposureMode = .continuousAutoExposure }
+                if device.isWhiteBalanceModeSupported(.continuousAutoWhiteBalance) { device.whiteBalanceMode = .continuousAutoWhiteBalance }
+                if device.isFocusModeSupported(.continuousAutoFocus) { device.focusMode = .continuousAutoFocus }
             }
-
             device.unlockForConfiguration()
-
         } catch {
-
-            print(
-                "Camera configuration error: \(error)"
-            )
+            print("Camera configuration error: \(error)")
         }
     }
 
@@ -998,57 +498,18 @@ final class CameraTracker:
     // ============================================================
 
     private func loadCameras() {
-
-        let types:
-            [AVCaptureDevice.DeviceType] = [
-
-                .builtInWideAngleCamera,
-
-                .builtInUltraWideCamera,
-
-                .builtInTelephotoCamera,
-
-                .builtInTrueDepthCamera
-            ]
-
-        let discovery =
-            AVCaptureDevice.DiscoverySession(
-                deviceTypes: types,
-                mediaType: .video,
-                position: .unspecified
-            )
-
-        let devices =
-            discovery.devices
+        let types: [AVCaptureDevice.DeviceType] = [.builtInWideAngleCamera, .builtInUltraWideCamera, .builtInTelephotoCamera, .builtInTrueDepthCamera]
+        let discovery = AVCaptureDevice.DiscoverySession(deviceTypes: types, mediaType: .video, position: .unspecified)
+        let devices = discovery.devices
 
         DispatchQueue.main.async {
-
-            self.availableCameras =
-                devices
-
-            if let front =
-                devices.first(
-                    where: {
-                        $0.position == .front
-                    }
-                ) {
-
-                self.selectedCameraID =
-                    front.uniqueID
-
-                self.switchCamera(
-                    cameraID: front.uniqueID
-                )
-
-            } else if let first =
-                        devices.first {
-
-                self.selectedCameraID =
-                    first.uniqueID
-
-                self.switchCamera(
-                    cameraID: first.uniqueID
-                )
+            self.availableCameras = devices
+            if let front = devices.first(where: { $0.position == .front }) {
+                self.selectedCameraID = front.uniqueID
+                self.switchCamera(cameraID: front.uniqueID)
+            } else if let first = devices.first {
+                self.selectedCameraID = first.uniqueID
+                self.switchCamera(cameraID: first.uniqueID)
             }
         }
     }
@@ -1057,150 +518,56 @@ final class CameraTracker:
     // MARK: - SWITCH CAMERA
     // ============================================================
 
-    func switchCamera(
-        cameraID: String
-    ) {
-
-        guard
-            let device =
-                availableCameras.first(
-                    where: {
-                        $0.uniqueID == cameraID
-                    }
-                )
-        else {
-            return
-        }
+    func switchCamera(cameraID: String) {
+        guard let device = availableCameras.first(where: { $0.uniqueID == cameraID }) else { return }
 
         videoQueue.async {
-
             self.captureSession.beginConfiguration()
+            self.captureSession.sessionPreset = .hd1920x1080
 
-            self.captureSession.sessionPreset =
-                .hd1920x1080
-
-            // --------------------------------------------------------
-            // Remove old input
-            // --------------------------------------------------------
-
-            for input in
-                self.captureSession.inputs {
-
-                self.captureSession.removeInput(
-                    input
-                )
+            for input in self.captureSession.inputs {
+                self.captureSession.removeInput(input)
             }
-
-            // --------------------------------------------------------
-            // Add new input
-            // --------------------------------------------------------
 
             do {
-
-                let input =
-                    try AVCaptureDeviceInput(
-                        device: device
-                    )
-
-                if self.captureSession.canAddInput(
-                    input
-                ) {
-
-                    self.captureSession.addInput(
-                        input
-                    )
+                let input = try AVCaptureDeviceInput(device: device)
+                if self.captureSession.canAddInput(input) {
+                    self.captureSession.addInput(input)
                 }
-
             } catch {
-
-                print(
-                    "Unable to create camera input: \(error)"
-                )
+                print("Unable to create camera input: \(error)")
             }
-
-            // --------------------------------------------------------
-            // Video output
-            // --------------------------------------------------------
 
             let output: AVCaptureVideoDataOutput
-
-            if let existing =
-                self.captureSession.outputs
-                    .compactMap({
-                        $0 as? AVCaptureVideoDataOutput
-                    })
-                    .first {
-
+            if let existing = self.captureSession.outputs.compactMap({ $0 as? AVCaptureVideoDataOutput }).first {
                 output = existing
-
             } else {
-
-                output =
-                    AVCaptureVideoDataOutput()
-
-                output.alwaysDiscardsLateVideoFrames =
-                    true
-
-                output.videoSettings = [
-                    kCVPixelBufferPixelFormatTypeKey as String:
-                        kCVPixelFormatType_32BGRA
-                ]
-
-                output.setSampleBufferDelegate(
-                    self,
-                    queue: self.videoQueue
-                )
-
-                if self.captureSession.canAddOutput(
-                    output
-                ) {
-
-                    self.captureSession.addOutput(
-                        output
-                    )
+                output = AVCaptureVideoDataOutput()
+                output.alwaysDiscardsLateVideoFrames = true
+                output.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
+                output.setSampleBufferDelegate(self, queue: self.videoQueue)
+                if self.captureSession.canAddOutput(output) {
+                    self.captureSession.addOutput(output)
                 }
             }
 
-            // --------------------------------------------------------
-            // ORIENTATION
-            // --------------------------------------------------------
-
-            if let connection =
-                output.connection(
-                    with: .video
-                ) {
-
+            if let connection = output.connection(with: .video) {
                 if connection.isVideoOrientationSupported {
-
-                    connection.videoOrientation =
-                        .portrait
+                    connection.videoOrientation = .portrait
                 }
-
                 if device.position == .front {
-
                     if connection.isVideoMirroringSupported {
-
-                        connection.isVideoMirrored =
-                            true
+                        connection.isVideoMirrored = true
                     }
                 } else {
-
                     if connection.isVideoMirroringSupported {
-
-                        connection.isVideoMirrored =
-                            false
+                        connection.isVideoMirrored = false
                     }
                 }
             }
 
             self.captureSession.commitConfiguration()
-
-            // --------------------------------------------------------
-            // Start session
-            // --------------------------------------------------------
-
             if !self.captureSession.isRunning {
-
                 self.captureSession.startRunning()
             }
         }
@@ -1211,473 +578,149 @@ final class CameraTracker:
     // ============================================================
 
     private func startMJPEGServer() {
-
         do {
-
-            listener =
-                try NWListener(
-                    using: .tcp,
-                    on: 8080
-                )
-
+            listener = try NWListener(using: .tcp, on: 8080)
         } catch {
-
-            print(
-                "Unable to start server: \(error)"
-            )
-
+            print("Unable to start server: \(error)")
             return
         }
 
         listener?.stateUpdateHandler = { state in
-
-            print(
-                "MJPEG server state: \(state)"
-            )
+            print("MJPEG server state: \(state)")
         }
 
-        listener?.newConnectionHandler = {
-            [weak self] connection in
+        listener?.newConnectionHandler = { [weak self] connection in
+            guard let self else { return }
+            connection.start(queue: .global(qos: .userInitiated))
 
-            guard let self else {
-                return
-            }
-
-            connection.start(
-                queue: .global(
-                    qos: .userInitiated
-                )
-            )
-
-            let header =
-                """
-                HTTP/1.1 200 OK\r
-                Content-Type: multipart/x-mixed-replace; boundary=frame\r
-                Cache-Control: no-cache\r
-                Connection: close\r
-                Pragma: no-cache\r
-                \r
-                """
-
-            connection.send(
-                content: header.data(
-                    using: .utf8
-                ),
-                completion:
-                    .contentProcessed {
-                        _ in
-                    }
-            )
+            let header = "HTTP/1.1 200 OK\r\nContent-Type: multipart/x-mixed-replace; boundary=frame\r\nCache-Control: no-cache\r\nConnection: close\r\nPragma: no-cache\r\n\r\n"
+            connection.send(content: header.data(using: .utf8), completion: .contentProcessed { _ in })
 
             self.videoQueue.async {
-
-                self.connections.append(
-                    connection
-                )
+                self.connections.append(connection)
             }
         }
-
-        listener?.start(
-            queue: .global(
-                qos: .userInitiated
-            )
-        )
+        listener?.start(queue: .global(qos: .userInitiated))
     }
 
     // ============================================================
     // MARK: - CAMERA FRAME PROCESSING
     // ============================================================
 
-    func captureOutput(
-        _ output: AVCaptureOutput,
-        didOutput sampleBuffer: CMSampleBuffer,
-        from connection: AVCaptureConnection
-    ) {
+    func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
 
-        guard
-            let pixelBuffer =
-                CMSampleBufferGetImageBuffer(
-                    sampleBuffer
-                )
-        else {
-            return
-        }
-
-        // ========================================================
-        // CREATE IMAGE
-        // ========================================================
-
-        var currentCIImage =
-            CIImage(
-                cvPixelBuffer: pixelBuffer
-            )
-
-        let originalExtent =
-            currentCIImage.extent
-
-        // ========================================================
-        // BACKGROUND REPLACEMENT
-        // ========================================================
+        var currentCIImage = CIImage(cvPixelBuffer: pixelBuffer)
+        let originalExtent = currentCIImage.extent
 
         if backgroundMode != .off {
-
-            let segmentationHandler =
-                VNImageRequestHandler(
-                    cvPixelBuffer: pixelBuffer,
-                    options: [:]
-                )
-
+            let segmentationHandler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:])
             do {
-
-                try segmentationHandler.perform(
-                    [segmentationRequest]
-                )
-
+                try segmentationHandler.perform([segmentationRequest])
             } catch {
-
-                print(
-                    "Segmentation error: \(error)"
-                )
+                print("Segmentation error: \(error)")
             }
 
-            if let maskObservation =
-                segmentationRequest.results?.first {
+            if let maskObservation = segmentationRequest.results?.first {
+                let maskImage = CIImage(cvPixelBuffer: maskObservation.pixelBuffer)
+                let scaleX = originalExtent.width / maskImage.extent.width
+                let scaleY = originalExtent.height / maskImage.extent.height
+                let scaledMask = maskImage.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
 
-                let maskImage =
-                    CIImage(
-                        cvPixelBuffer:
-                            maskObservation.pixelBuffer
-                    )
-
-                let scaleX =
-                    originalExtent.width /
-                    maskImage.extent.width
-
-                let scaleY =
-                    originalExtent.height /
-                    maskImage.extent.height
-
-                let scaledMask =
-                    maskImage.transformed(
-                        by: CGAffineTransform(
-                            scaleX: scaleX,
-                            y: scaleY
-                        )
-                    )
-
-                var backgroundImage:
-                    CIImage?
+                var backgroundImage: CIImage?
 
                 switch backgroundMode {
-
-                case .off:
-
-                    backgroundImage = nil
-
+                case .off: backgroundImage = nil
                 case .portrait:
-
-                    let blurFilter =
-                        CIFilter.gaussianBlur()
-
-                    blurFilter.inputImage =
-                        currentCIImage
-
-                    blurFilter.radius =
-                        15.0
-
-                    backgroundImage =
-                        blurFilter.outputImage?
-                            .cropped(
-                                to: originalExtent
-                            )
-
+                    let blurFilter = CIFilter.gaussianBlur()
+                    blurFilter.inputImage = currentCIImage
+                    blurFilter.radius = 15.0
+                    backgroundImage = blurFilter.outputImage?.cropped(to: originalExtent)
                 case .custom:
-
-                    if let customBG =
-                        customBackgroundImage {
-
-                        backgroundImage =
-                            scaledToFill(
-                                image: customBG,
-                                targetSize:
-                                    originalExtent.size
-                            )
+                    if let customBG = customBackgroundImage {
+                        backgroundImage = scaledToFill(image: customBG, targetSize: originalExtent.size)
                     }
                 }
 
-                if let bg =
-                    backgroundImage {
-
-                    let blendFilter =
-                        CIFilter.blendWithMask()
-
-                    blendFilter.inputImage =
-                        currentCIImage
-
-                    blendFilter.backgroundImage =
-                        bg
-
-                    blendFilter.maskImage =
-                        scaledMask
-
-                    if let result =
-                        blendFilter.outputImage {
-
-                        currentCIImage =
-                            result
+                if let bg = backgroundImage {
+                    let blendFilter = CIFilter.blendWithMask()
+                    blendFilter.inputImage = currentCIImage
+                    blendFilter.backgroundImage = bg
+                    blendFilter.maskImage = scaledMask
+                    if let result = blendFilter.outputImage {
+                        currentCIImage = result
                     }
                 }
             }
         }
 
-        // ========================================================
-        // FACE TRACKING / AUTO CROP
-        // ========================================================
-
-        var finalCIImage =
-            currentCIImage
+        var finalCIImage = currentCIImage
 
         if isFaceTrackingEnabled {
-
-            let request =
-                VNDetectFaceRectanglesRequest()
-
-            let handler =
-                VNImageRequestHandler(
-                    ciImage: currentCIImage,
-                    options: [:]
-                )
+            let request = VNDetectFaceRectanglesRequest()
+            let handler = VNImageRequestHandler(ciImage: currentCIImage, options: [:])
 
             do {
-
-                try handler.perform(
-                    [request]
-                )
-
+                try handler.perform([request])
             } catch {
-
-                print(
-                    "Face detection error: \(error)"
-                )
+                print("Face detection error: \(error)")
             }
 
-            if let face =
-                request.results?.first {
+            if let face = request.results?.first {
+                let target = face.boundingBox
 
-                let target =
-                    face.boundingBox
+                currentFaceRect.origin.x += (target.origin.x - currentFaceRect.origin.x) * 0.12
+                currentFaceRect.origin.y += (target.origin.y - currentFaceRect.origin.y) * 0.12
+                currentFaceRect.size.width += (target.width - currentFaceRect.size.width) * 0.12
+                currentFaceRect.size.height += (target.height - currentFaceRect.size.height) * 0.12
 
-                // Smooth movement
-                currentFaceRect.origin.x +=
-                    (target.origin.x -
-                     currentFaceRect.origin.x) *
-                    0.12
+                let width = originalExtent.width
+                let height = originalExtent.height
 
-                currentFaceRect.origin.y +=
-                    (target.origin.y -
-                     currentFaceRect.origin.y) *
-                    0.12
+                let centerX = (currentFaceRect.origin.x + currentFaceRect.width / 2) * width
+                let centerY = (1.0 - currentFaceRect.origin.y - currentFaceRect.height / 2) * height
 
-                currentFaceRect.size.width +=
-                    (target.width -
-                     currentFaceRect.size.width) *
-                    0.12
+                let aspect = width / height
+                let faceWidth = currentFaceRect.width * width
+                let desiredWidth = faceWidth * max(1.0, zoomIntensity)
 
-                currentFaceRect.size.height +=
-                    (target.height -
-                     currentFaceRect.size.height) *
-                    0.12
+                let cropWidth = min(desiredWidth, width)
+                let cropHeight = min(cropWidth / aspect, height)
 
-                let width =
-                    originalExtent.width
+                var cropX = centerX - cropWidth / 2
+                var cropY = centerY - cropHeight / 2
 
-                let height =
-                    originalExtent.height
+                cropX = max(0, min(cropX, width - cropWidth))
+                cropY = max(0, min(cropY, height - cropHeight))
 
-                // ------------------------------------------------
-                // Face center
-                // ------------------------------------------------
-
-                let centerX =
-                    (
-                        currentFaceRect.origin.x +
-                        currentFaceRect.width / 2
-                    ) * width
-
-                let centerY =
-                    (
-                        1.0 -
-                        currentFaceRect.origin.y -
-                        currentFaceRect.height / 2
-                    ) * height
-
-                // ------------------------------------------------
-                // Preserve camera aspect ratio
-                // ------------------------------------------------
-
-                let aspect =
-                    width / height
-
-                let faceWidth =
-                    currentFaceRect.width *
-                    width
-
-                let desiredWidth =
-                    faceWidth *
-                    max(
-                        1.0,
-                        zoomIntensity
-                    )
-
-                let cropWidth =
-                    min(
-                        desiredWidth,
-                        width
-                    )
-
-                let cropHeight =
-                    min(
-                        cropWidth / aspect,
-                        height
-                    )
-
-                // ------------------------------------------------
-                // Center crop around face
-                // ------------------------------------------------
-
-                var cropX =
-                    centerX -
-                    cropWidth / 2
-
-                var cropY =
-                    centerY -
-                    cropHeight / 2
-
-                cropX =
-                    max(
-                        0,
-                        min(
-                            cropX,
-                            width -
-                            cropWidth
-                        )
-                    )
-
-                cropY =
-                    max(
-                        0,
-                        min(
-                            cropY,
-                            height -
-                            cropHeight
-                        )
-                    )
-
-                let cropRect =
-                    CGRect(
-                        x: cropX,
-                        y: cropY,
-                        width: cropWidth,
-                        height: cropHeight
-                    )
-
-                finalCIImage =
-                    currentCIImage.cropped(
-                        to: cropRect
-                    )
+                let cropRect = CGRect(x: cropX, y: cropY, width: cropWidth, height: cropHeight)
+                finalCIImage = currentCIImage.cropped(to: cropRect)
             }
         }
 
-        // ========================================================
-        // CREATE CGIMAGE
-        // ========================================================
-
-        guard
-            let outputCG =
-                context.createCGImage(
-                    finalCIImage,
-                    from: finalCIImage.extent
-                )
-        else {
-            return
-        }
-
-        // ========================================================
-        // UPDATE SWIFTUI
-        // ========================================================
+        guard let outputCG = context.createCGImage(finalCIImage, from: finalCIImage.extent) else { return }
 
         DispatchQueue.main.async {
-
-            self.currentFrame =
-                outputCG
+            self.currentFrame = outputCG
         }
 
-        // ========================================================
-        // SEND MJPEG
-        // ========================================================
+        let uiImage = UIImage(cgImage: outputCG)
+        guard let jpeg = uiImage.jpegData(compressionQuality: 0.60) else { return }
 
-        let uiImage =
-            UIImage(
-                cgImage: outputCG
-            )
-
-        guard
-            let jpeg =
-                uiImage.jpegData(
-                    compressionQuality: 0.60
-                )
-        else {
-            return
-        }
-
-        let header =
-            """
-            --frame\r
-            Content-Type: image/jpeg\r
-            Content-Length: \(jpeg.count)\r
-            \r
-            """
-
-        guard
-            let headerData =
-                header.data(using: .utf8),
-            let endingData =
-                "\r\n".data(using: .utf8)
-        else {
-            return
-        }
-
-        let packet =
-            headerData +
-            jpeg +
-            endingData
-
-        // --------------------------------------------------------
-        // Remove dead connections
-        // --------------------------------------------------------
+        let header = "--frame\r\nContent-Type: image/jpeg\r\nContent-Length: \(jpeg.count)\r\n\r\n"
+        guard let headerData = header.data(using: .utf8), let endingData = "\r\n".data(using: .utf8) else { return }
+        
+        let packet = headerData + jpeg + endingData
 
         connections.removeAll { connection in
             switch connection.state {
-            case .cancelled, .failed:
-                return true
-            default:
-                return false
+            case .cancelled, .failed: return true
+            default: return false
             }
         }
 
-        // --------------------------------------------------------
-        // Send frame
-        // --------------------------------------------------------
-
         for connection in connections {
-
-            connection.send(
-                content: packet,
-                completion:
-                    .contentProcessed {
-                        _ in
-                    }
-            )
+            connection.send(content: packet, completion: .contentProcessed { _ in })
         }
     }
 
@@ -1687,66 +730,29 @@ final class CameraTracker:
 
     func getWiFiAddress() -> String {
         var address = "Not Connected"
-
         var interfaceAddress: UnsafeMutablePointer<ifaddrs>?
 
-        guard getifaddrs(&interfaceAddress) == 0 else {
-            return address
-        }
-
+        guard getifaddrs(&interfaceAddress) == 0 else { return address }
         var pointer = interfaceAddress
 
         while pointer != nil {
-
-            guard let interface = pointer?.pointee else {
-                break
-            }
-
-            defer {
-                pointer = interface.ifa_next
-            }
-
-            guard let addr = interface.ifa_addr else {
-                continue
-            }
+            guard let interface = pointer?.pointee else { break }
+            defer { pointer = interface.ifa_next }
+            guard let addr = interface.ifa_addr else { continue }
 
             if addr.pointee.sa_family == UInt8(AF_INET) {
-
-                let interfaceName = String(
-                    cString: interface.ifa_name
-                )
-
+                let interfaceName = String(cString: interface.ifa_name)
                 if interfaceName == "en0" {
-
-                    var hostname = [CChar](
-                        repeating: 0,
-                        count: Int(NI_MAXHOST)
-                    )
-
-                    let result = getnameinfo(
-                        addr,
-                        socklen_t(addr.pointee.sa_len),
-                        &hostname,
-                        socklen_t(hostname.count),
-                        nil,
-                        0,
-                        NI_NUMERICHOST
-                    )
-
+                    var hostname = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+                    let result = getnameinfo(addr, socklen_t(addr.pointee.sa_len), &hostname, socklen_t(hostname.count), nil, 0, NI_NUMERICHOST)
                     if result == 0 {
-
-                        let ipAddress = String(
-                            cString: hostname
-                        )
-
+                        let ipAddress = String(cString: hostname)
                         address = "http://\(ipAddress):8080"
                     }
                 }
             }
         }
-
         freeifaddrs(interfaceAddress)
-
         return address
     }
 }
