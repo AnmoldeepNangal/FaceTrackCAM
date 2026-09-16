@@ -4,11 +4,6 @@ import Vision
 import Network
 import CoreImage.CIFilterBuiltins
 
-enum BackgroundMode: String, CaseIterable {
-    case off = "Off"
-    case portrait = "Portrait"
-}
-
 @main
 struct FaceTrackCamApp: App {
     var body: some Scene {
@@ -28,11 +23,13 @@ struct ContentView: View {
             Color.black.ignoresSafeArea()
             
             if isBlackoutMode {
+                // 1. OLED Screen Dimmer / Anti-Burn-In
+                // Pure black on an OLED screen physically turns the pixels off.
                 Color.black.ignoresSafeArea()
                     .overlay(
                         Text("BLACKOUT MODE ACTIVE\nCamera & Server Running\nTap anywhere to wake")
                             .multilineTextAlignment(.center)
-                            .foregroundColor(Color(white: 0.2))
+                            .foregroundColor(Color(white: 0.2)) // Extremely dim to prevent burn-in
                             .font(.headline)
                     )
                     .onTapGesture {
@@ -40,6 +37,7 @@ struct ContentView: View {
                         UIScreen.main.brightness = previousBrightness
                     }
             } else {
+                // 2. Camera Video Feed
                 if let frame = camera.currentFrame {
                     Image(decorative: frame, scale: 1.0, orientation: .up)
                         .resizable()
@@ -50,9 +48,10 @@ struct ContentView: View {
                         .foregroundColor(.white)
                 }
                 
-                // Status & HUD Overlay (Top)
+                // 3. Status & HUD Overlay (Top)
                 VStack {
                     HStack {
+                        // Battery & Thermal Monitor
                         HStack(spacing: 12) {
                             HStack(spacing: 4) {
                                 Image(systemName: camera.batteryLevel > 0.2 ? "battery.100" : "battery.25")
@@ -89,7 +88,7 @@ struct ContentView: View {
                     Spacer()
                 }
                 
-                // User Interface Overlay (Bottom Controls)
+                // 4. User Interface Overlay (Bottom Controls)
                 VStack {
                     Spacer()
                     
@@ -104,56 +103,49 @@ struct ContentView: View {
                         }
                         .padding(.horizontal)
                         
-                        // Background Modes & Lens Picker
-                        VStack(spacing: 10) {
-                            HStack {
-                                Picker("Lens", selection: $camera.selectedCameraID) {
-                                    ForEach(camera.availableCameras, id: \.uniqueID) { cam in
-                                        Text(cam.localizedName).tag(cam.uniqueID)
-                                    }
+                        HStack(spacing: 10) {
+                            // Lens Selector
+                            Picker("Lens", selection: $camera.selectedCameraID) {
+                                ForEach(camera.availableCameras, id: \.uniqueID) { cam in
+                                    Text(cam.localizedName).tag(cam.uniqueID)
                                 }
-                                .pickerStyle(MenuPickerStyle())
-                                .padding(.horizontal, 10)
-                                .background(Color.gray.opacity(0.3))
-                                .cornerRadius(8)
-                                .onChange(of: camera.selectedCameraID) {
-                                    camera.switchCamera(cameraID: camera.selectedCameraID)
-                                }
-                                
-                                Spacer()
+                            }
+                            .pickerStyle(MenuPickerStyle())
+                            .padding(10)
+                            .background(Color.black.opacity(0.7))
+                            .cornerRadius(8)
+                            .onChange(of: camera.selectedCameraID) { newID in
+                                camera.switchCamera(cameraID: newID)
                             }
                             
-                            // Simplified Background Selector (Off or Portrait)
-                            Picker("Background", selection: $camera.backgroundMode) {
-                                ForEach(BackgroundMode.allCases, id: \.self) { mode in
-                                    Text(mode.rawValue).tag(mode)
-                                }
-                            }
-                            .pickerStyle(SegmentedPickerStyle())
-                            .background(Color.white.opacity(0.8))
-                            .cornerRadius(8)
+                            // Hardware Blur Toggle
+                            Toggle("Blur", isOn: $camera.isPortraitBlurEnabled)
+                                .toggleStyle(SwitchToggleStyle(tint: .blue))
+                                .padding(10)
+                                .background(Color.black.opacity(0.7))
+                                .cornerRadius(8)
                         }
-                        .padding(10)
-                        .background(Color.black.opacity(0.7))
-                        .cornerRadius(8)
                         
                         HStack(spacing: 10) {
+                            // Face Tracking Toggle
                             Toggle("Tracking", isOn: $camera.isFaceTrackingEnabled)
                                 .toggleStyle(SwitchToggleStyle(tint: .green))
                                 .padding(10)
                                 .background(Color.black.opacity(0.7))
                                 .cornerRadius(8)
                             
+                            // Exposure Lock Toggle
                             Toggle("AE/AF Lock", isOn: $camera.isExposureLocked)
                                 .toggleStyle(SwitchToggleStyle(tint: .orange))
                                 .padding(10)
                                 .background(Color.black.opacity(0.7))
                                 .cornerRadius(8)
-                                .onChange(of: camera.isExposureLocked) {
-                                    camera.toggleExposureLock(lock: camera.isExposureLocked)
+                                .onChange(of: camera.isExposureLocked) { locked in
+                                    camera.toggleExposureLock(lock: locked)
                                 }
                         }
                         
+                        // OBS Connection Dashboard
                         VStack(spacing: 5) {
                             Text("WI-FI OBS URL:  \(camera.getWiFiAddress())")
                                 .font(.subheadline)
@@ -176,7 +168,7 @@ struct ContentView: View {
 class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleBufferDelegate {
     @Published var currentFrame: CGImage?
     @Published var isFaceTrackingEnabled = true
-    @Published var backgroundMode: BackgroundMode = .off
+    @Published var isPortraitBlurEnabled = false
     @Published var isExposureLocked = false
     @Published var zoomIntensity: CGFloat = 2.8
     
@@ -190,6 +182,7 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
     private var captureSession = AVCaptureSession()
     private var currentFaceRect: CGRect = CGRect(x: 0.25, y: 0.25, width: 0.5, height: 0.5)
     
+    // Dedicated request for Neural Engine background segmentation
     private let segmentationRequest = VNGeneratePersonSegmentationRequest()
     private let context = CIContext()
     
@@ -209,13 +202,23 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
         timer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
             guard let self = self else { return }
             self.batteryLevel = UIDevice.current.batteryLevel
+            
             let state = ProcessInfo.processInfo.thermalState
             switch state {
-            case .nominal: self.thermalString = "Normal"; self.thermalColor = .green
-            case .fair: self.thermalString = "Warm"; self.thermalColor = .yellow
-            case .serious: self.thermalString = "Hot"; self.thermalColor = .orange
-            case .critical: self.thermalString = "Critical"; self.thermalColor = .red
-            @unknown default: break
+            case .nominal:
+                self.thermalString = "Normal"
+                self.thermalColor = .green
+            case .fair:
+                self.thermalString = "Warm"
+                self.thermalColor = .yellow
+            case .serious:
+                self.thermalString = "Hot"
+                self.thermalColor = .orange
+            case .critical:
+                self.thermalString = "Critical"
+                self.thermalColor = .red
+            @unknown default:
+                break
             }
         }
     }
@@ -234,8 +237,12 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
                 if device.isFocusModeSupported(.continuousAutoFocus) { device.focusMode = .continuousAutoFocus }
             }
             device.unlockForConfiguration()
-        } catch { print("Failed to lock camera: \(error)") }
+        } catch {
+            print("Failed to lock camera properties: \(error)")
+        }
     }
+    
+    // ... loadCameras(), switchCamera(), and startMJPEGServer() remain exactly the same as your original code ...
     
     func loadCameras() {
         let types: [AVCaptureDevice.DeviceType] = [.builtInWideAngleCamera, .builtInUltraWideCamera, .builtInTelephotoCamera, .builtInTrueDepthCamera]
@@ -283,33 +290,38 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         var currentCIImage = CIImage(cvPixelBuffer: pixelBuffer)
         
-        if backgroundMode == .portrait {
+        // 1. Apply Hardware Background Blur (Portrait Mode) if enabled
+        if isPortraitBlurEnabled {
             try? VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:]).perform([segmentationRequest])
             if let maskPixelBuffer = segmentationRequest.results?.first?.pixelBuffer {
                 let maskImage = CIImage(cvPixelBuffer: maskPixelBuffer)
                 
+                // Scale the Neural Engine mask back up to 1080p
                 let scaleX = currentCIImage.extent.width / maskImage.extent.width
                 let scaleY = currentCIImage.extent.height / maskImage.extent.height
                 let scaledMask = maskImage.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
                 
+                // Blur the original image
                 let blurFilter = CIFilter.gaussianBlur()
                 blurFilter.inputImage = currentCIImage
                 blurFilter.radius = 15.0
+                let blurredImage = blurFilter.outputImage?.cropped(to: currentCIImage.extent)
                 
-                if let blurredImage = blurFilter.outputImage?.cropped(to: currentCIImage.extent) {
-                    let blendFilter = CIFilter.blendWithMask()
-                    blendFilter.inputImage = currentCIImage
-                    blendFilter.backgroundImage = blurredImage
-                    blendFilter.maskImage = scaledMask
-                    if let blendedOutput = blendFilter.outputImage {
-                        currentCIImage = blendedOutput
-                    }
+                // Blend foreground and blurred background using the mask
+                let blendFilter = CIFilter.blendWithMask()
+                blendFilter.inputImage = currentCIImage
+                blendFilter.backgroundImage = blurredImage
+                blendFilter.maskImage = scaledMask
+                
+                if let blendedOutput = blendFilter.outputImage {
+                    currentCIImage = blendedOutput
                 }
             }
         }
         
         var finalCGImage: CGImage?
         
+        // 2. Apply Face Tracking & Cropping
         if isFaceTrackingEnabled {
             let request = VNDetectFaceRectanglesRequest { [weak self] req, _ in
                 guard let self = self, let results = req.results as? [VNFaceObservation], let face = results.first else { return }
@@ -328,6 +340,7 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
             let faceW = currentFaceRect.size.width * width
             let faceH = currentFaceRect.size.height * height
             
+            // Dynamic Zoom based on slider
             let cropW = min(faceW * zoomIntensity, width)
             let cropH = cropW * (9.0/16.0)
             let cropX = max(0, min((faceX + faceW/2) - (cropW / 2), width - cropW))
