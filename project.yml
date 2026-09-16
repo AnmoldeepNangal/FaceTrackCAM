@@ -7,9 +7,10 @@ targets:
     platform: iOS
     deploymentTarget: "17.0"
     sources:
-      - path: . # Adjust if your source files are in a specific subfolder
+      - path: .
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: com.anmol.FaceTrackCam
-      INFOPLIST_FILE: Info.plist # Change or add if you use a custom plist path
       CURRENT_PROJECT_VERSION: "1"
       MARKETING_VERSION: "1.0"
+      GENERATE_INFOPLIST_FILE: YES
+      INFOPLIST_KEY_NSCameraUsageDescription: "This app uses the camera for live streaming, background replacement, and face tracking."
