@@ -122,38 +122,81 @@ struct ContentView: View {
                             .padding(10)
                             .background(Color.black.opacity(0.7))
                             .cornerRadius(8)
-                            .onChange(of: camera.selectedCameraID) { newID in
+                            .onChange(of: camera.selectedCameraID) { _, newID in
                                 camera.switchCamera(cameraID: newID)
                             }
 
                             // Background Mode Selector (replaces old Blur toggle)
-                            HStack(spacing: 6) {
-                                Picker("Background", selection: $camera.backgroundMode) {
-                                    ForEach(BackgroundMode.allCases, id: \.self) { mode in
-                                        Text(mode.rawValue).tag(mode)
-                                    }
-                                }
-                                .pickerStyle(SegmentedPickerStyle())
-                                .frame(width: 200)
-
-                                if camera.backgroundMode == .custom {
-                                    PhotosPicker(selection: $backgroundPickerItem, matching: .images) {
-                                        Image(systemName: camera.hasCustomBackground ? "photo.fill" : "photo.badge.plus")
-                                            .foregroundColor(.white)
-                                    }
-                                    .onChange(of: backgroundPickerItem) { newItem in
-                                        Task {
-                                            if let data = try? await newItem?.loadTransferable(type: Data.self),
-                                               let uiImage = UIImage(data: data) {
-                                                camera.setCustomBackground(uiImage: uiImage)
-                                            }
-                                        }
-                                    }
+                            Picker("Background", selection: $camera.backgroundMode) {
+                                ForEach(BackgroundMode.allCases, id: \.self) { mode in
+                                    Text(mode.rawValue).tag(mode)
                                 }
                             }
+                            .pickerStyle(SegmentedPickerStyle())
+                            .frame(width: 200)
                             .padding(10)
                             .background(Color.black.opacity(0.7))
                             .cornerRadius(8)
+                        }
+
+                        // Saved-backgrounds gallery: pick an existing one, add a new one, or delete.
+                        if camera.backgroundMode == .custom {
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 8) {
+                                    ForEach(camera.savedBackgrounds) { bg in
+                                        ZStack(alignment: .topTrailing) {
+                                            if let thumb = bg.thumbnail {
+                                                Image(uiImage: thumb)
+                                                    .resizable()
+                                                    .scaledToFill()
+                                                    .frame(width: 48, height: 48)
+                                                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                                                    .overlay(
+                                                        RoundedRectangle(cornerRadius: 6)
+                                                            .stroke(camera.selectedBackgroundID == bg.id ? Color.green : Color.clear, lineWidth: 2)
+                                                    )
+                                                    .onTapGesture {
+                                                        camera.selectSavedBackground(id: bg.id)
+                                                    }
+                                            }
+                                            Button(action: { camera.deleteBackground(id: bg.id) }) {
+                                                Image(systemName: "xmark.circle.fill")
+                                                    .font(.system(size: 14))
+                                                    .foregroundColor(.white)
+                                                    .background(Circle().fill(Color.black.opacity(0.7)))
+                                            }
+                                            .offset(x: 5, y: -5)
+                                        }
+                                    }
+
+                                    PhotosPicker(selection: $backgroundPickerItem, matching: .images) {
+                                        Image(systemName: "plus")
+                                            .foregroundColor(.white)
+                                            .frame(width: 48, height: 48)
+                                            .background(Color.white.opacity(0.15))
+                                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                                    }
+                                }
+                                .padding(8)
+                            }
+                            .frame(height: 64)
+                            .background(Color.black.opacity(0.7))
+                            .cornerRadius(8)
+                            .onChange(of: backgroundPickerItem) { _, newItem in
+                                Task {
+                                    if let data = try? await newItem?.loadTransferable(type: Data.self),
+                                       let uiImage = UIImage(data: data) {
+                                        camera.addBackground(uiImage: uiImage)
+                                    }
+                                    backgroundPickerItem = nil
+                                }
+                            }
+
+                            if camera.savedBackgrounds.isEmpty {
+                                Text("Tap + to add a background photo")
+                                    .font(.caption)
+                                    .foregroundColor(.yellow)
+                            }
                         }
 
                         HStack(spacing: 10) {
@@ -170,8 +213,20 @@ struct ContentView: View {
                                 .padding(10)
                                 .background(Color.black.opacity(0.7))
                                 .cornerRadius(8)
-                                .onChange(of: camera.isExposureLocked) { locked in
+                                .onChange(of: camera.isExposureLocked) { _, locked in
                                     camera.toggleExposureLock(lock: locked)
+                                }
+
+                            // Mirror Toggle — defaults on for front camera, off for back,
+                            // but always overridable (useful since OBS often wants an
+                            // un-mirrored feed regardless of which lens is active).
+                            Toggle("Mirror", isOn: $camera.isMirrored)
+                                .toggleStyle(SwitchToggleStyle(tint: .blue))
+                                .padding(10)
+                                .background(Color.black.opacity(0.7))
+                                .cornerRadius(8)
+                                .onChange(of: camera.isMirrored) { _, mirrored in
+                                    camera.setMirrored(mirrored)
                                 }
                         }
 
@@ -200,6 +255,7 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
     @Published var isFaceTrackingEnabled = true
     @Published var backgroundMode: BackgroundMode = .off
     @Published var isExposureLocked = false
+    @Published var isMirrored: Bool = true
     @Published var zoomIntensity: CGFloat = 2.8
 
     @Published var availableCameras: [AVCaptureDevice] = []
@@ -208,6 +264,10 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
     @Published var batteryLevel: Float = 1.0
     @Published var thermalString: String = "Normal"
     @Published var thermalColor: Color = .green
+
+    // Saved custom backgrounds, persisted across launches.
+    @Published var savedBackgrounds: [SavedBackground] = []
+    @Published var selectedBackgroundID: UUID?
 
     var hasCustomBackground: Bool { customBackgroundImage != nil }
 
@@ -218,9 +278,9 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
     private let segmentationRequest = VNGeneratePersonSegmentationRequest()
     private let context = CIContext()
 
-    // The user-picked custom background, stored once as a CIImage so we don't
+    // The currently-active custom background, stored once as a CIImage so we don't
     // re-decode it on every frame. All reads (in captureOutput) and writes (in
-    // setCustomBackground) are dispatched onto videoQueue below, so access is
+    // activateBackground) are dispatched onto videoQueue below, so access is
     // serialized without needing a lock.
     private var customBackgroundImage: CIImage?
 
@@ -234,12 +294,25 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
     private var connections: [NWConnection] = []
     private var timer: Timer?
 
+    // MARK: - Saved background persistence
+
+    private let savedBackgroundIDsKey = "savedBackgroundIDs"
+    private let selectedBackgroundIDKey = "selectedBackgroundID"
+
+    private let backgroundsDirectory: URL = {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let dir = docs.appendingPathComponent("Backgrounds", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }()
+
     override init() {
         super.init()
         segmentationRequest.qualityLevel = .balanced
         loadCameras()
         startMJPEGServer()
         startHardwareMonitor()
+        loadSavedBackgrounds()
     }
 
     // MARK: - Custom Background
@@ -355,7 +428,12 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
             connection.start(queue: .global())
             let header = "HTTP/1.1 200 OK\r\nContent-Type: multipart/x-mixed-replace; boundary=frame\r\n\r\n"
             connection.send(content: header.data(using: .utf8)!, completion: .contentProcessed({ _ in }))
-            self?.connections.append(connection)
+            // Hop onto videoQueue before mutating `connections` — captureOutput reads/iterates
+            // this same array on videoQueue, so this keeps all access on one serial queue
+            // instead of racing across the listener's queue and the capture queue.
+            self?.videoQueue.async {
+                self?.connections.append(connection)
+            }
         }
         listener?.start(queue: .global())
     }
