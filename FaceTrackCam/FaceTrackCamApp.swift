@@ -2,6 +2,7 @@ import SwiftUI
 import AVFoundation
 import Vision
 import Network
+import PhotosUI
 import CoreImage.CIFilterBuiltins
 
 @main
@@ -13,23 +14,31 @@ struct FaceTrackCamApp: App {
     }
 }
 
+// MARK: - Background Mode
+
+enum BackgroundMode: String, CaseIterable {
+    case off = "Off"
+    case portrait = "Portrait"
+    case custom = "Custom"
+}
+
 struct ContentView: View {
     @StateObject var camera = CameraTracker()
     @State private var isBlackoutMode = false
     @State private var previousBrightness: CGFloat = 0.5
-    
+    @State private var backgroundPickerItem: PhotosPickerItem?
+
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            
+
             if isBlackoutMode {
                 // 1. OLED Screen Dimmer / Anti-Burn-In
-                // Pure black on an OLED screen physically turns the pixels off.
                 Color.black.ignoresSafeArea()
                     .overlay(
                         Text("BLACKOUT MODE ACTIVE\nCamera & Server Running\nTap anywhere to wake")
                             .multilineTextAlignment(.center)
-                            .foregroundColor(Color(white: 0.2)) // Extremely dim to prevent burn-in
+                            .foregroundColor(Color(white: 0.2))
                             .font(.headline)
                     )
                     .onTapGesture {
@@ -47,18 +56,17 @@ struct ContentView: View {
                     Text("Starting Camera...")
                         .foregroundColor(.white)
                 }
-                
+
                 // 3. Status & HUD Overlay (Top)
                 VStack {
                     HStack {
-                        // Battery & Thermal Monitor
                         HStack(spacing: 12) {
                             HStack(spacing: 4) {
                                 Image(systemName: camera.batteryLevel > 0.2 ? "battery.100" : "battery.25")
                                 Text("\(Int(camera.batteryLevel * 100))%")
                             }
                             .foregroundColor(camera.batteryLevel > 0.2 ? .white : .red)
-                            
+
                             HStack(spacing: 4) {
                                 Image(systemName: "flame.fill")
                                 Text(camera.thermalString)
@@ -69,9 +77,9 @@ struct ContentView: View {
                         .padding(8)
                         .background(Color.black.opacity(0.6))
                         .cornerRadius(8)
-                        
+
                         Spacer()
-                        
+
                         Button(action: {
                             previousBrightness = UIScreen.main.brightness
                             UIScreen.main.brightness = 0.0
@@ -87,11 +95,11 @@ struct ContentView: View {
                     .padding()
                     Spacer()
                 }
-                
+
                 // 4. User Interface Overlay (Bottom Controls)
                 VStack {
                     Spacer()
-                    
+
                     VStack(spacing: 15) {
                         // Zoom Intensity Slider
                         HStack {
@@ -102,7 +110,7 @@ struct ContentView: View {
                                 .tint(.green)
                         }
                         .padding(.horizontal)
-                        
+
                         HStack(spacing: 10) {
                             // Lens Selector
                             Picker("Lens", selection: $camera.selectedCameraID) {
@@ -117,15 +125,37 @@ struct ContentView: View {
                             .onChange(of: camera.selectedCameraID) { newID in
                                 camera.switchCamera(cameraID: newID)
                             }
-                            
-                            // Hardware Blur Toggle
-                            Toggle("Blur", isOn: $camera.isPortraitBlurEnabled)
-                                .toggleStyle(SwitchToggleStyle(tint: .blue))
-                                .padding(10)
-                                .background(Color.black.opacity(0.7))
-                                .cornerRadius(8)
+
+                            // Background Mode Selector (replaces old Blur toggle)
+                            HStack(spacing: 6) {
+                                Picker("Background", selection: $camera.backgroundMode) {
+                                    ForEach(BackgroundMode.allCases, id: \.self) { mode in
+                                        Text(mode.rawValue).tag(mode)
+                                    }
+                                }
+                                .pickerStyle(SegmentedPickerStyle())
+                                .frame(width: 200)
+
+                                if camera.backgroundMode == .custom {
+                                    PhotosPicker(selection: $backgroundPickerItem, matching: .images) {
+                                        Image(systemName: camera.hasCustomBackground ? "photo.fill" : "photo.badge.plus")
+                                            .foregroundColor(.white)
+                                    }
+                                    .onChange(of: backgroundPickerItem) { newItem in
+                                        Task {
+                                            if let data = try? await newItem?.loadTransferable(type: Data.self),
+                                               let uiImage = UIImage(data: data) {
+                                                camera.setCustomBackground(uiImage: uiImage)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            .padding(10)
+                            .background(Color.black.opacity(0.7))
+                            .cornerRadius(8)
                         }
-                        
+
                         HStack(spacing: 10) {
                             // Face Tracking Toggle
                             Toggle("Tracking", isOn: $camera.isFaceTrackingEnabled)
@@ -133,7 +163,7 @@ struct ContentView: View {
                                 .padding(10)
                                 .background(Color.black.opacity(0.7))
                                 .cornerRadius(8)
-                            
+
                             // Exposure Lock Toggle
                             Toggle("AE/AF Lock", isOn: $camera.isExposureLocked)
                                 .toggleStyle(SwitchToggleStyle(tint: .orange))
@@ -144,7 +174,7 @@ struct ContentView: View {
                                     camera.toggleExposureLock(lock: locked)
                                 }
                         }
-                        
+
                         // OBS Connection Dashboard
                         VStack(spacing: 5) {
                             Text("WI-FI OBS URL:  \(camera.getWiFiAddress())")
@@ -168,28 +198,35 @@ struct ContentView: View {
 class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleBufferDelegate {
     @Published var currentFrame: CGImage?
     @Published var isFaceTrackingEnabled = true
-    @Published var isPortraitBlurEnabled = false
+    @Published var backgroundMode: BackgroundMode = .off
     @Published var isExposureLocked = false
     @Published var zoomIntensity: CGFloat = 2.8
-    
+
     @Published var availableCameras: [AVCaptureDevice] = []
     @Published var selectedCameraID: String = ""
-    
+
     @Published var batteryLevel: Float = 1.0
     @Published var thermalString: String = "Normal"
     @Published var thermalColor: Color = .green
-    
+
+    var hasCustomBackground: Bool { customBackgroundImage != nil }
+
     private var captureSession = AVCaptureSession()
     private var currentFaceRect: CGRect = CGRect(x: 0.25, y: 0.25, width: 0.5, height: 0.5)
-    
+
     // Dedicated request for Neural Engine background segmentation
     private let segmentationRequest = VNGeneratePersonSegmentationRequest()
     private let context = CIContext()
-    
+
+    // The user-picked custom background, stored once as a CIImage so we don't
+    // re-decode it on every frame. Access is confined to the video queue except
+    // for the initial assignment from setCustomBackground().
+    private var customBackgroundImage: CIImage?
+
     private var listener: NWListener?
     private var connections: [NWConnection] = []
     private var timer: Timer?
-    
+
     override init() {
         super.init()
         segmentationRequest.qualityLevel = .balanced
@@ -197,12 +234,44 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
         startMJPEGServer()
         startHardwareMonitor()
     }
-    
+
+    // MARK: - Custom Background
+
+    /// Called from the UI when the user picks a photo. Converts + caches it as a CIImage
+    /// (respecting the image's EXIF orientation) on the same queue the video frames are
+    /// processed on, so there's no race with captureOutput reading customBackgroundImage.
+    func setCustomBackground(uiImage: UIImage) {
+        guard let ciImage = CIImage(image: uiImage, options: [.applyOrientationProperty: true]) else { return }
+        let videoQueue = DispatchQueue(label: "videoQueue")
+        videoQueue.async { [weak self] in
+            self?.customBackgroundImage = ciImage
+        }
+    }
+
+    /// Scales `image` up (aspect-fill) and center-crops it to exactly `targetSize`,
+    /// normalizing its origin to (0,0) so it lines up with the live camera frame.
+    private func scaledToFill(image: CIImage, targetSize: CGSize) -> CIImage {
+        let extent = image.extent
+        guard extent.width > 0, extent.height > 0, targetSize.width > 0, targetSize.height > 0 else { return image }
+
+        let scale = max(targetSize.width / extent.width, targetSize.height / extent.height)
+        let scaled = image.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+
+        let scaledExtent = scaled.extent
+        let cropX = scaledExtent.origin.x + (scaledExtent.width - targetSize.width) / 2
+        let cropY = scaledExtent.origin.y + (scaledExtent.height - targetSize.height) / 2
+        let cropRect = CGRect(x: cropX, y: cropY, width: targetSize.width, height: targetSize.height)
+
+        return scaled
+            .cropped(to: cropRect)
+            .transformed(by: CGAffineTransform(translationX: -cropRect.origin.x, y: -cropRect.origin.y))
+    }
+
     func startHardwareMonitor() {
         timer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
             guard let self = self else { return }
             self.batteryLevel = UIDevice.current.batteryLevel
-            
+
             let state = ProcessInfo.processInfo.thermalState
             switch state {
             case .nominal:
@@ -222,7 +291,7 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
             }
         }
     }
-    
+
     func toggleExposureLock(lock: Bool) {
         guard let device = captureSession.inputs.compactMap({ $0 as? AVCaptureDeviceInput }).first?.device else { return }
         do {
@@ -241,9 +310,7 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
             print("Failed to lock camera properties: \(error)")
         }
     }
-    
-    // ... loadCameras(), switchCamera(), and startMJPEGServer() remain exactly the same as your original code ...
-    
+
     func loadCameras() {
         let types: [AVCaptureDevice.DeviceType] = [.builtInWideAngleCamera, .builtInUltraWideCamera, .builtInTelephotoCamera, .builtInTrueDepthCamera]
         let discovery = AVCaptureDevice.DiscoverySession(deviceTypes: types, mediaType: .video, position: .unspecified)
@@ -255,7 +322,7 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
             }
         }
     }
-    
+
     func switchCamera(cameraID: String) {
         guard let device = availableCameras.first(where: { $0.uniqueID == cameraID }) else { return }
         captureSession.beginConfiguration()
@@ -274,7 +341,7 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
         captureSession.commitConfiguration()
         if !captureSession.isRunning { DispatchQueue.global(qos: .userInitiated).async { self.captureSession.startRunning() } }
     }
-    
+
     func startMJPEGServer() {
         listener = try? NWListener(using: .tcp, on: 8080)
         listener?.newConnectionHandler = { [weak self] connection in
@@ -285,42 +352,57 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
         }
         listener?.start(queue: .global())
     }
-    
+
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         var currentCIImage = CIImage(cvPixelBuffer: pixelBuffer)
-        
-        // 1. Apply Hardware Background Blur (Portrait Mode) if enabled
-        if isPortraitBlurEnabled {
+
+        // 1. Apply background replacement (Portrait blur or Custom image) if enabled
+        if backgroundMode != .off {
             try? VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:]).perform([segmentationRequest])
             if let maskPixelBuffer = segmentationRequest.results?.first?.pixelBuffer {
                 let maskImage = CIImage(cvPixelBuffer: maskPixelBuffer)
-                
-                // Scale the Neural Engine mask back up to 1080p
+
+                // Scale the Neural Engine mask back up to full frame resolution
                 let scaleX = currentCIImage.extent.width / maskImage.extent.width
                 let scaleY = currentCIImage.extent.height / maskImage.extent.height
                 let scaledMask = maskImage.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
-                
-                // Blur the original image
-                let blurFilter = CIFilter.gaussianBlur()
-                blurFilter.inputImage = currentCIImage
-                blurFilter.radius = 15.0
-                let blurredImage = blurFilter.outputImage?.cropped(to: currentCIImage.extent)
-                
-                // Blend foreground and blurred background using the mask
-                let blendFilter = CIFilter.blendWithMask()
-                blendFilter.inputImage = currentCIImage
-                blendFilter.backgroundImage = blurredImage
-                blendFilter.maskImage = scaledMask
-                
-                if let blendedOutput = blendFilter.outputImage {
-                    currentCIImage = blendedOutput
+
+                var backgroundImage: CIImage?
+
+                switch backgroundMode {
+                case .portrait:
+                    let blurFilter = CIFilter.gaussianBlur()
+                    blurFilter.inputImage = currentCIImage
+                    blurFilter.radius = 15.0
+                    backgroundImage = blurFilter.outputImage?.cropped(to: currentCIImage.extent)
+
+                case .custom:
+                    if let customBG = customBackgroundImage {
+                        backgroundImage = scaledToFill(image: customBG, targetSize: currentCIImage.extent.size)
+                    }
+                    // If no photo has been picked yet, fall through with no replacement
+                    // (backgroundImage stays nil) so the raw feed shows until one is chosen.
+
+                case .off:
+                    backgroundImage = nil
+                }
+
+                if let bg = backgroundImage {
+                    let blendFilter = CIFilter.blendWithMask()
+                    blendFilter.inputImage = currentCIImage
+                    blendFilter.backgroundImage = bg
+                    blendFilter.maskImage = scaledMask
+
+                    if let blendedOutput = blendFilter.outputImage {
+                        currentCIImage = blendedOutput
+                    }
                 }
             }
         }
-        
+
         var finalCGImage: CGImage?
-        
+
         // 2. Apply Face Tracking & Cropping
         if isFaceTrackingEnabled {
             let request = VNDetectFaceRectanglesRequest { [weak self] req, _ in
@@ -332,29 +414,29 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
                 self.currentFaceRect.size.height += (target.size.height - self.currentFaceRect.size.height) * 0.1
             }
             try? VNImageRequestHandler(ciImage: currentCIImage, options: [:]).perform([request])
-            
+
             let width = currentCIImage.extent.width
             let height = currentCIImage.extent.height
             let faceX = currentFaceRect.origin.x * width
             let faceY = (1 - currentFaceRect.origin.y - currentFaceRect.size.height) * height
             let faceW = currentFaceRect.size.width * width
             let faceH = currentFaceRect.size.height * height
-            
+
             // Dynamic Zoom based on slider
             let cropW = min(faceW * zoomIntensity, width)
             let cropH = cropW * (9.0/16.0)
             let cropX = max(0, min((faceX + faceW/2) - (cropW / 2), width - cropW))
             let cropY = max(0, min((faceY + faceH/2) - (cropH / 2), height - cropH))
-            
+
             let croppedCI = currentCIImage.cropped(to: CGRect(x: cropX, y: cropY, width: cropW, height: cropH))
             finalCGImage = context.createCGImage(croppedCI, from: croppedCI.extent)
         } else {
             finalCGImage = context.createCGImage(currentCIImage, from: currentCIImage.extent)
         }
-        
+
         guard let outputCG = finalCGImage else { return }
         DispatchQueue.main.async { self.currentFrame = outputCG }
-        
+
         let uiImage = UIImage(cgImage: outputCG)
         if let jpeg = uiImage.jpegData(compressionQuality: 0.6) {
             let header = "--frame\r\nContent-Type: image/jpeg\r\nContent-Length: \(jpeg.count)\r\n\r\n"
@@ -364,7 +446,7 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
             }
         }
     }
-    
+
     func getWiFiAddress() -> String {
         var address = "Not Connected to Wi-Fi"
         var ifaddr: UnsafeMutablePointer<ifaddrs>?
