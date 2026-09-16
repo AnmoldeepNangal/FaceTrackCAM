@@ -8,188 +8,85 @@ import UIKit
 @main
 struct FaceTrackCamApp: App {
     var body: some Scene {
-        WindowGroup {
-            ContentView()
-        }
+        WindowGroup { ContentView() }
     }
 }
 
-// MARK: - Main View
 struct ContentView: View {
     @StateObject var camera = CameraTracker()
     
     var body: some View {
         ZStack {
+            // Background
             Color.black.ignoresSafeArea()
             
+            // Video Feed
             if let frame = camera.currentFrame {
                 Image(decorative: frame, scale: 1.0, orientation: .up)
-                    .resizable()
-                    .scaledToFit()
-                    .ignoresSafeArea()
-            } else {
-                Text("Starting Pro Camera...").foregroundColor(.white)
+                    .resizable().scaledToFit().ignoresSafeArea()
             }
             
+            // Raw UI
             if camera.isBlackoutMode {
-                BlackoutScreen(camera: camera)
+                Button("WAKE UP SCREEN") { camera.isBlackoutMode = false }
+                    .font(.system(size: 30, weight: .bold))
+                    .foregroundColor(.white)
             } else {
                 VStack {
-                    TopBar(camera: camera)
                     Spacer()
-                    BottomBar(camera: camera)
+                    VStack(spacing: 8) {
+                        Picker("Lens", selection: $camera.selectedCameraID) {
+                            ForEach(camera.availableCameras, id: \.uniqueID) { cam in
+                                Text(cam.localizedName).tag(cam.uniqueID)
+                            }
+                        }
+                        
+                        Toggle("Face Tracking", isOn: $camera.isFaceTrackingEnabled)
+                        Toggle("Lock Exposure", isOn: $camera.isExposureLocked)
+                        Toggle("Green Screen BG", isOn: $camera.isGreenScreen)
+                        
+                        HStack {
+                            Text("Zoom")
+                            Slider(value: $camera.zoomLevel, in: 1.0...3.0)
+                        }
+                        
+                        Button("Enter OLED Blackout") { camera.isBlackoutMode = true }
+                            .padding(.vertical, 5)
+                        
+                        Text("WIRED: http://127.0.0.1:8080").foregroundColor(.green).font(.caption)
+                        Text("WIFI: \(camera.wifiAddress)").foregroundColor(.gray).font(.caption)
+                    }
+                    .padding()
+                    .background(Color.black.opacity(0.85))
+                    .foregroundColor(.white)
+                    .cornerRadius(12)
+                    .padding()
                 }
             }
         }
-        .preferredColorScheme(.dark)
+        .onChange(of: camera.selectedCameraID) { id in camera.switchCamera(cameraID: id) }
+        .onChange(of: camera.isExposureLocked) { _ in camera.updateExposureLock() }
     }
 }
 
-// MARK: - UI Components
-struct BlackoutScreen: View {
-    @ObservedObject var camera: CameraTracker
-    var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
-            VStack(spacing: 20) {
-                Image(systemName: "moon.zzz.fill")
-                    .font(.system(size: 60))
-                    .foregroundColor(Color.gray.opacity(0.3))
-                Text("OLED Blackout Active\nTap anywhere to wake.")
-                    .multilineTextAlignment(.center)
-                    .foregroundColor(Color.gray.opacity(0.5))
-            }
-        }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            camera.isBlackoutMode = false
-        }
-    }
-}
-
-struct TopBar: View {
-    @ObservedObject var camera: CameraTracker
-    var body: some View {
-        HStack {
-            Picker("Lens", selection: $camera.selectedCameraID) {
-                ForEach(camera.availableCameras, id: \.uniqueID) { cam in
-                    Text(cam.localizedName).tag(cam.uniqueID)
-                }
-            }
-            .pickerStyle(MenuPickerStyle())
-            .padding(10)
-            .background(Color.black.opacity(0.7))
-            .cornerRadius(8)
-            
-            Spacer()
-            
-            Toggle("Face Track", isOn: $camera.isFaceTrackingEnabled)
-                .toggleStyle(SwitchToggleStyle(tint: Color.green))
-                .padding(10)
-                .background(Color.black.opacity(0.7))
-                .cornerRadius(8)
-                .frame(width: 150)
-        }
-        .padding()
-    }
-}
-
-struct BottomBar: View {
-    @ObservedObject var camera: CameraTracker
-    var body: some View {
-        VStack(spacing: 12) {
-            
-            // Row 1: Exposure and Blackout
-            HStack(spacing: 15) {
-                Toggle("Lock Exp", isOn: Binding(
-                    get: { camera.isExposureLocked },
-                    set: { camera.isExposureLocked = $0; camera.updateExposureLock() }
-                ))
-                .toggleStyle(SwitchToggleStyle(tint: Color.yellow))
-                .padding(10)
-                .background(Color.black.opacity(0.7))
-                .cornerRadius(8)
-                
-                Button(action: { camera.isBlackoutMode = true }) {
-                    Text("OLED Blackout")
-                        .bold()
-                        .foregroundColor(Color.black)
-                        .padding(12)
-                        .background(Color.white)
-                        .cornerRadius(8)
-                }
-            }
-            
-            // Row 2: Background Mode
-            Picker("Background", selection: $camera.bgMode) {
-                Text("Normal BG").tag(0)
-                Text("Green Screen").tag(1)
-            }
-            .pickerStyle(SegmentedPickerStyle())
-            .padding(5)
-            .background(Color.black.opacity(0.7))
-            .cornerRadius(8)
-            
-            // Row 3: Zoom Slider
-            if camera.isFaceTrackingEnabled {
-                HStack {
-                    Text(camera.zoomText)
-                        .bold()
-                        .foregroundColor(Color.white)
-                        .frame(width: 60)
-                    
-                    Slider(value: $camera.zoomLevel, in: 1.0...3.0, step: 0.1)
-                        .accentColor(Color.green)
-                }
-                .padding(10)
-                .background(Color.black.opacity(0.7))
-                .cornerRadius(8)
-            }
-            
-            // Row 4: URLs
-            VStack(spacing: 5) {
-                Text("WIRED: http://127.0.0.1:8080")
-                    .font(.headline)
-                    .foregroundColor(Color.green)
-                
-                Text("WI-FI: \(camera.wifiAddress)")
-                    .font(.subheadline)
-                    .foregroundColor(Color.white)
-            }
-            .padding(10)
-            .background(Color.black.opacity(0.7))
-            .cornerRadius(10)
-        }
-        .padding()
-    }
-}
-
-// MARK: - Core Logic Engine
 class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleBufferDelegate {
     @Published var currentFrame: CGImage?
     @Published var isFaceTrackingEnabled = true
     @Published var isExposureLocked = false
-    @Published var bgMode: Int = 0 // 0 = Normal, 1 = Green Screen
-    
-    @Published var zoomLevel: Double = 1.5
-    var zoomText: String { String(format: "%.1fx", zoomLevel) }
-    
-    @Published var availableCameras: [AVCaptureDevice] = []
-    @Published var selectedCameraID: String = ""
-    @Published var wifiAddress: String = "Loading..."
-    
+    @Published var isGreenScreen = false
     @Published var isBlackoutMode = false {
         didSet {
             DispatchQueue.main.async {
-                if self.isBlackoutMode {
-                    self.originalBrightness = UIScreen.main.brightness
-                    UIScreen.main.brightness = 0.0
-                } else {
-                    UIScreen.main.brightness = self.originalBrightness
-                }
+                self.originalBrightness = UIScreen.main.brightness
+                UIScreen.main.brightness = self.isBlackoutMode ? 0.0 : self.originalBrightness
             }
         }
     }
+    
+    @Published var zoomLevel: Double = 1.5
+    @Published var availableCameras: [AVCaptureDevice] = []
+    @Published var selectedCameraID: String = ""
+    @Published var wifiAddress: String = "Loading..."
     
     private var captureSession = AVCaptureSession()
     private var currentFaceRect = CGRect(x: 0.25, y: 0.25, width: 0.5, height: 0.5)
@@ -199,14 +96,7 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
     private var connections: [NWConnection] = []
     private var originalBrightness: CGFloat = 0.5
     
-    private lazy var faceRequest: VNDetectFaceRectanglesRequest = {
-        return VNDetectFaceRectanglesRequest { [weak self] req, _ in
-            if let results = req.results as? [VNFaceObservation], let face = results.first {
-                self?.latestFaceRect = face.boundingBox
-            }
-        }
-    }()
-    
+    private var faceRequest = VNDetectFaceRectanglesRequest()
     private var segmentationRequest = VNGeneratePersonSegmentationRequest()
     private var latestFaceRect: CGRect?
     
@@ -214,6 +104,12 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
         super.init()
         segmentationRequest.qualityLevel = .fast
         segmentationRequest.outputPixelFormat = kCVPixelFormatType_OneComponent8
+        
+        faceRequest = VNDetectFaceRectanglesRequest { [weak self] req, _ in
+            if let results = req.results as? [VNFaceObservation], let face = results.first {
+                self?.latestFaceRect = face.boundingBox
+            }
+        }
         
         wifiAddress = getWiFiAddress()
         loadCameras()
@@ -223,7 +119,6 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
     func loadCameras() {
         let types: [AVCaptureDevice.DeviceType] = [.builtInWideAngleCamera, .builtInUltraWideCamera, .builtInTelephotoCamera, .builtInTrueDepthCamera]
         let discovery = AVCaptureDevice.DiscoverySession(deviceTypes: types, mediaType: .video, position: .unspecified)
-        
         DispatchQueue.main.async {
             self.availableCameras = discovery.devices
             if let front = self.availableCameras.first(where: { $0.position == .front }) {
@@ -235,7 +130,6 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
     
     func switchCamera(cameraID: String) {
         guard let device = availableCameras.first(where: { $0.uniqueID == cameraID }) else { return }
-        
         captureSession.beginConfiguration()
         captureSession.sessionPreset = .hd1920x1080
         captureSession.inputs.forEach { captureSession.removeInput($0) }
@@ -254,9 +148,7 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
             conn.videoOrientation = .landscapeRight
             if device.position == .front && conn.isVideoMirroringSupported { conn.isVideoMirrored = true }
         }
-        
         captureSession.commitConfiguration()
-        
         if !captureSession.isRunning { DispatchQueue.global(qos: .userInitiated).async { self.captureSession.startRunning() } }
         updateExposureLock()
     }
@@ -294,14 +186,11 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
         
         var requests: [VNRequest] = []
         if isFaceTrackingEnabled { requests.append(faceRequest) }
-        if bgMode == 1 { requests.append(segmentationRequest) }
+        if isGreenScreen { requests.append(segmentationRequest) }
         
-        if !requests.isEmpty {
-            try? VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:]).perform(requests)
-        }
+        if !requests.isEmpty { try? VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:]).perform(requests) }
         
-        // Apply Green Screen
-        if bgMode == 1, let maskPixelBuffer = segmentationRequest.results?.first?.pixelBuffer {
+        if isGreenScreen, let maskPixelBuffer = segmentationRequest.results?.first?.pixelBuffer {
             let maskW = CGFloat(CVPixelBufferGetWidth(maskPixelBuffer))
             let maskH = CGFloat(CVPixelBufferGetHeight(maskPixelBuffer))
             let maskImage = CIImage(cvPixelBuffer: maskPixelBuffer).transformed(by: CGAffineTransform(scaleX: width / maskW, y: height / maskH))
@@ -315,7 +204,6 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
             ciImage = blendFilter.outputImage ?? ciImage
         }
         
-        // Apply Face Tracking & Crop
         if isFaceTrackingEnabled, let target = latestFaceRect {
             let ease: CGFloat = 0.1
             currentFaceRect.origin.x += (target.origin.x - currentFaceRect.origin.x) * ease
@@ -328,9 +216,9 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
             
             let multiplier = CGFloat(max(1.4, 4.2 / zoomLevel))
             var cropW = min(width, currentFaceRect.size.width * width * multiplier)
-            var cropH = cropW * 0.5625 // 9:16 aspect ratio
+            var cropH = cropW * 0.5625
             
-            if cropH > height { cropH = height; cropW = height * 1.7777 } // Fallback to 16:9 bounds
+            if cropH > height { cropH = height; cropW = height * 1.7777 }
             
             let cropX = max(0, min(centerX - (cropW / 2.0), width - cropW))
             let cropY = max(0, min(centerY - (cropH / 2.0), height - cropH))
