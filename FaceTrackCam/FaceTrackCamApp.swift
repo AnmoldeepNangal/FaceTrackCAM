@@ -56,7 +56,7 @@ struct ContentView: View {
                 // Strict VStack with spacing: 0 to stack cleanly
                 VStack(spacing: 0) {
                     
-                    // --- 1. TOP BAR (Pushed completely into the top red area) ---
+                    // --- 1. TOP BAR ---
                     HStack {
                         HStack(spacing: 4) {
                             Image(systemName: camera.batteryLevel > 0.2 ? "battery.100" : "battery.25")
@@ -84,12 +84,10 @@ struct ContentView: View {
                         }
                     }
                     .padding(.horizontal, 24)
-                    // Hardcoded top padding to sit beautifully alongside the Dynamic Island
-                    .padding(.top, 55) 
-                    .padding(.bottom, 15)
+                    .padding(.vertical, 15)
                     .background(Color.black)
 
-                    // --- 2. CAMERA FEED (Takes only the remaining middle space) ---
+                    // --- 2. CAMERA FEED ---
                     ZStack {
                         Color.black // Fills empty space if aspect ratio is narrow
                         if let frame = camera.currentFrame {
@@ -102,7 +100,7 @@ struct ContentView: View {
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                    // --- 3. BOTTOM CONTROLS (Pushed completely into the bottom red area) ---
+                    // --- 3. BOTTOM CONTROLS ---
                     VStack(spacing: 20) {
                         
                         // Zoom Control
@@ -200,14 +198,11 @@ struct ContentView: View {
                             }
                         }
                         .padding(.top, 10)
-                        // Hardcoded bottom padding to push right through the Home Indicator
-                        .padding(.bottom, 35) 
+                        .padding(.bottom, 15) 
                     }
                     .padding(.top, 15)
                     .background(Color.black)
                 }
-                // THIS is the command that forces the UI into the red scribbled zones
-                .ignoresSafeArea(.all, edges: .all) 
             }
         }
         .onAppear {
@@ -322,18 +317,36 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
         captureSession.beginConfiguration()
         captureSession.sessionPreset = .hd1920x1080
         captureSession.inputs.forEach { captureSession.removeInput($0) }
-        if let input = try? AVCaptureDeviceInput(device: device), captureSession.canAddInput(input) { captureSession.addInput(input) }
+        
+        if let input = try? AVCaptureDeviceInput(device: device), captureSession.canAddInput(input) { 
+            captureSession.addInput(input) 
+        }
+        
         if captureSession.outputs.isEmpty {
             let output = AVCaptureVideoDataOutput()
             output.setSampleBufferDelegate(self, queue: videoQueue)
-            if captureSession.canAddOutput(output) { captureSession.addOutput(output) }
+            if captureSession.canAddOutput(output) { 
+                captureSession.addOutput(output) 
+            }
         }
+        
         if let output = captureSession.outputs.first as? AVCaptureVideoDataOutput, let connection = output.connection(with: .video) {
-            // Unlocked the hardcoded orientation so the UI can rotate freely
-            if device.position == .front && connection.isVideoMirroringSupported { connection.isVideoMirrored = true }
+            if device.position == .front && connection.isVideoMirroringSupported { 
+                connection.isVideoMirrored = true 
+            }
+            
+            // Force the video feed into Portrait orientation
+            if #available(iOS 17.0, *) {
+                connection.videoRotationAngle = 90
+            } else {
+                connection.videoOrientation = .portrait
+            }
         }
+        
         captureSession.commitConfiguration()
-        if !captureSession.isRunning { DispatchQueue.global(qos: .userInitiated).async { self.captureSession.startRunning() } }
+        if !captureSession.isRunning { 
+            DispatchQueue.global(qos: .userInitiated).async { self.captureSession.startRunning() } 
+        }
     }
 
     func startMJPEGServer() {
@@ -408,7 +421,6 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
             let faceW = currentFaceRect.size.width * width
             let faceH = currentFaceRect.size.height * height
 
-            // DYNAMIC ASPECT RATIO CALCULATION (Fixes the rotation bug in Image 19)
             let feedRatio = height / width
             
             let cropW = min(faceW * zoomIntensity, width)
