@@ -51,17 +51,43 @@ struct ContentView: View {
 
             ZStack {
 
-                Color.black
-                    .ignoresSafeArea()
+                // ====================================================
+                // 1. CAMERA LAYER (ABSOLUTE FULL SCREEN)
+                // ====================================================
+
+                Color.black // Fallback background
+
+                if let frame = camera.currentFrame {
+
+                    Image(
+                        decorative: frame,
+                        scale: 1.0,
+                        orientation: .up
+                    )
+                    .resizable()
+                    .scaledToFill() // Forces the image to fill the entire frame
+                    .frame(
+                        width: geometry.size.width,
+                        height: geometry.size.height
+                    )
+                    .clipped()
+
+                } else {
+
+                    ProgressView()
+                        .progressViewStyle(
+                            CircularProgressViewStyle(tint: .white)
+                        )
+                }
+
+                // ====================================================
+                // 2. UI OVERLAY LAYER
+                // ====================================================
 
                 if isBlackoutMode {
 
-                    // ====================================================
-                    // BLACKOUT MODE
-                    // ====================================================
-
+                    // BLACKOUT MODE OVERLAY
                     Color.black
-                        .ignoresSafeArea()
                         .contentShape(Rectangle())
                         .onTapGesture {
                             wakeFromBlackout()
@@ -89,64 +115,42 @@ struct ContentView: View {
 
                 } else {
 
-                    // ====================================================
-                    // DEDICATED CAMERA + LETTERBOX CONTROLS
-                    // ====================================================
-
+                    // CAMERA CONTROLS
                     VStack(spacing: 0) {
 
-                        // TOP BAR (In top black letterbox band)
                         topControls
-                            .padding(.top, geometry.safeAreaInsets.top + 6)
-                            .padding(.bottom, 6)
-                            .frame(maxWidth: .infinity)
-                            .background(Color.black)
-
-                        Spacer(minLength: 0)
-
-                        // CAMERA PREVIEW (Preserved aspect ratio, completely unblocked)
-                        if let frame = camera.currentFrame {
-
-                            Image(
-                                decorative: frame,
-                                scale: 1.0,
-                                orientation: .up
-                            )
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(maxWidth: geometry.size.width)
-                            .clipped()
-
-                        } else {
-
-                            Color.black
-                                .aspectRatio(9/16, contentMode: .fit)
-                                .overlay(
-                                    ProgressView()
-                                        .progressViewStyle(
-                                            CircularProgressViewStyle(tint: .white)
-                                        )
+                            .padding(.top, geometry.safeAreaInsets.top + 8)
+                            .padding(.bottom, 16)
+                            .background(
+                                LinearGradient(
+                                    gradient: Gradient(colors: [Color.black.opacity(0.75), Color.clear]),
+                                    startPoint: .top,
+                                    endPoint: .bottom
                                 )
-                        }
+                            )
 
                         Spacer(minLength: 0)
 
-                        // BOTTOM CONTROLS (In bottom black letterbox band)
                         bottomControls
+                            .padding(.top, 24)
                             .padding(
                                 .bottom,
                                 geometry.safeAreaInsets.bottom > 0
                                 ? geometry.safeAreaInsets.bottom
-                                : 10
+                                : 15
                             )
-                            .frame(maxWidth: .infinity)
-                            .background(Color.black)
+                            .background(
+                                LinearGradient(
+                                    gradient: Gradient(colors: [Color.clear, Color.black.opacity(0.6), Color.black.opacity(0.9)]),
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            )
                     }
-                    .ignoresSafeArea()
                 }
             }
         }
-        .ignoresSafeArea()
+        .ignoresSafeArea(.all) // CRITICAL: This allows the app to go edge-to-edge
         .onAppear {
 
             UIDevice.current.isBatteryMonitoringEnabled = true
@@ -582,7 +586,6 @@ struct ContentView: View {
             .padding(.top, 4)
             .padding(.bottom, 6)
         }
-        .padding(.top, 10)
     }
 
     // ============================================================
