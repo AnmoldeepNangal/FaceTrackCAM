@@ -1775,5 +1775,7 @@ func getWiFiAddress() -> String {
     freeifaddrs(interfaceAddress)
 
     return address
-}
+    }
+}      
+        
 
