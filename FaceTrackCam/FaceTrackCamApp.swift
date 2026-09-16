@@ -3,6 +3,8 @@ import AVFoundation
 import Vision
 import Network
 import CoreImage.CIFilterBuiltins
+import Foundation
+import UIKit
 
 @main
 struct FaceTrackCamApp: App {
@@ -28,7 +30,7 @@ struct ContentView: View {
                     .ignoresSafeArea()
             }
             
-            // 2. Liquid Glass UI Overlay (Hidden if Blackout Mode is ON)
+            // 2. Liquid Glass UI Overlay
             if !camera.isBlackoutMode {
                 VStack {
                     // TOP BAR: Status & Lens
@@ -67,7 +69,6 @@ struct ContentView: View {
                     
                     // BOTTOM BAR: Pro Controls
                     VStack(spacing: 15) {
-                        // Toggles
                         HStack(spacing: 20) {
                             ControlToggle(title: "Track", icon: "face.dashed", isOn: $camera.isFaceTrackingEnabled)
                             ControlToggle(title: "Lock Exp", icon: "lock.fill", isOn: $camera.isExposureLocked)
@@ -76,7 +77,6 @@ struct ContentView: View {
                         
                         Divider().background(Color.white.opacity(0.3))
                         
-                        // Background Replacement Mode
                         Picker("Background", selection: $camera.bgMode) {
                             Text("Normal").tag(BackgroundMode.normal)
                             Text("Hardware Blur").tag(BackgroundMode.blur)
@@ -84,7 +84,6 @@ struct ContentView: View {
                         }
                         .pickerStyle(SegmentedPickerStyle())
                         
-                        // Sliders
                         if camera.isFaceTrackingEnabled {
                             HStack {
                                 Image(systemName: "magnifyingglass")
@@ -102,7 +101,6 @@ struct ContentView: View {
                             }
                         }
                         
-                        // Network Info
                         HStack {
                             Text("Wired: 127.0.0.1:8080")
                                 .font(.caption2.bold())
@@ -119,7 +117,7 @@ struct ContentView: View {
                     .padding()
                 }
             } else {
-                // 3. BLACKOUT MODE OVERLAY (Saves OLED Burn-in)
+                // 3. BLACKOUT MODE OVERLAY
                 ZStack {
                     Color.black.ignoresSafeArea()
                     VStack {
@@ -139,7 +137,6 @@ struct ContentView: View {
         .preferredColorScheme(.dark)
     }
     
-    // UI Helpers
     func thermalIcon(state: ProcessInfo.ThermalState) -> String {
         switch state {
         case .nominal: return "thermometer.sun"
@@ -160,7 +157,6 @@ struct ContentView: View {
     }
 }
 
-// Custom Glass Toggle Button
 struct ControlToggle: View {
     var title: String
     var icon: String
@@ -215,11 +211,9 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
     private var connections: [NWConnection] = []
     private var originalBrightness: CGFloat = 0.5
     
-    // AI Requests
     private var faceRequest: VNDetectFaceRectanglesRequest!
     private var segmentationRequest = VNGeneratePersonSegmentationRequest()
     private var latestFaceRect: CGRect?
-    private var latestMask: CVPixelBuffer?
     
     override init() {
         super.init()
@@ -296,8 +290,12 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
         guard let device = availableCameras.first(where: { $0.uniqueID == selectedCameraID }) else { return }
         do {
             try device.lockForConfiguration()
-            device.exposureMode = isExposureLocked ? .locked : .continuousAutoExposure
-            device.whiteBalanceMode = isExposureLocked ? .locked : .continuousAutoWhiteBalance
+            if device.isExposureModeSupported(isExposureLocked ? .locked : .continuousAutoExposure) {
+                device.exposureMode = isExposureLocked ? .locked : .continuousAutoExposure
+            }
+            if device.isWhiteBalanceModeSupported(isExposureLocked ? .locked : .continuousAutoWhiteBalance) {
+                device.whiteBalanceMode = isExposureLocked ? .locked : .continuousAutoWhiteBalance
+            }
             device.unlockForConfiguration()
         } catch {}
     }
@@ -330,7 +328,6 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
         let width = ciImage.extent.width
         let height = ciImage.extent.height
         
-        // 1. Run AI Requests
         var requests: [VNRequest] = []
         if isFaceTrackingEnabled { requests.append(faceRequest) }
         if bgMode != .normal { requests.append(segmentationRequest) }
@@ -339,7 +336,6 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
             try? VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:]).perform(requests)
         }
         
-        // 2. Background Replacement
         if bgMode != .normal, let maskPixelBuffer = segmentationRequest.results?.first?.pixelBuffer {
             let maskImage = CIImage(cvPixelBuffer: maskPixelBuffer).transformed(by: CGAffineTransform(scaleX: width / CGFloat(CVPixelBufferGetWidth(maskPixelBuffer)), y: height / CGFloat(CVPixelBufferGetHeight(maskPixelBuffer))))
             
@@ -349,7 +345,7 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
                 blurFilter.inputImage = ciImage
                 blurFilter.radius = Float(blurRadius)
                 bgImage = blurFilter.outputImage?.cropped(to: ciImage.extent) ?? ciImage
-            } else { // Green Screen Cutout for OBS
+            } else { 
                 bgImage = CIImage(color: CIColor(red: 0, green: 1, blue: 0)).cropped(to: ciImage.extent)
             }
             
@@ -360,7 +356,6 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
             ciImage = blendFilter.outputImage ?? ciImage
         }
         
-        // 3. Face Tracking & Cropping
         if isFaceTrackingEnabled, let target = latestFaceRect {
             currentFaceRect.origin.x += (target.origin.x - currentFaceRect.origin.x) * 0.1
             currentFaceRect.origin.y += (target.origin.y - currentFaceRect.origin.y) * 0.1
@@ -384,7 +379,6 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
                 .transformed(by: CGAffineTransform(scaleX: 1920.0 / cropW, y: 1920.0 / cropW))
         }
         
-        // 4. Render and Broadcast
         guard let outputCG = ciContext.createCGImage(ciImage, from: CGRect(x: 0, y: 0, width: 1920, height: 1080)) else { return }
         DispatchQueue.main.async { self.currentFrame = outputCG }
         
@@ -405,7 +399,7 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
                 if interface.ifa_addr.pointee.sa_family == UInt8(AF_INET), String(cString: interface.ifa_name) == "en0" {
                     var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
                     getnameinfo(interface.ifa_addr, socklen_t(interface.ifa_addr.pointee.sa_len), &host, socklen_t(host.count), nil, socklen_t(0), NI_NUMERICHOST)
-                    address = String(cString: host)
+                    address = "http://\(String(cString: host)):8080"
                 }
             }
             freeifaddrs(ifaddr)
