@@ -1,16 +1,15 @@
 name: FaceTrackCam
 options:
-  bundleIdPrefix: com.custom
+  bundleIdPrefix: com.anmol
 targets:
   FaceTrackCam:
     type: application
     platform: iOS
-    deploymentTarget: "15.0"
-    sources: 
-      - FaceTrackCam
+    deploymentTarget: "16.0"
+    sources:
+      - path: . # Adjust if your source files are in a specific subfolder
     settings:
-      GENERATE_INFOPLIST_FILE: YES
+      PRODUCT_BUNDLE_IDENTIFIER: com.anmol.FaceTrackCam
+      INFOPLIST_FILE: Info.plist # Change or add if you use a custom plist path
       CURRENT_PROJECT_VERSION: "1"
       MARKETING_VERSION: "1.0"
-      INFOPLIST_KEY_NSCameraUsageDescription: "Needs camera for OBS streaming"
-      INFOPLIST_KEY_UILaunchScreen_Generation: YES
