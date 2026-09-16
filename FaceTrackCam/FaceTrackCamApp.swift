@@ -1712,98 +1712,68 @@ final class CameraTracker:
     // MARK: - WIFI ADDRESS
     // ============================================================
 
-    func getWiFiAddress() -> String {
+func getWiFiAddress() -> String {
+    var address = "Not Connected"
 
-        var address =
-            "Not Connected"
+    var interfaceAddress: UnsafeMutablePointer<ifaddrs>?
 
-        var interfaceAddress:
-            UnsafeMutablePointer<
-                ifaddrs
-            >?
+    guard getifaddrs(&interfaceAddress) == 0 else {
+        return address
+    }
 
-        guard
-            getifaddrs(
-                &interfaceAddress
-            ) == 0
-        else {
-            return address
+    var pointer = interfaceAddress
+
+    while pointer != nil {
+
+        guard let interface = pointer?.pointee else {
+            break
         }
 
-        var pointer =
-            interfaceAddress
+        defer {
+            pointer = interface.ifa_next
+        }
 
-        while pointer != nil {
+        guard let addr = interface.ifa_addr else {
+            continue
+        }
 
-            guard
-                let interface =
-                    pointer?.pointee
-            else {
-                break
-            }
+        if addr.pointee.sa_family == UInt8(AF_INET) {
 
-            defer {
+            let interfaceName = String(
+                cString: interface.ifa_name
+            )
 
-                pointer =
-                    interface.ifa_next
-            }
+            if interfaceName == "en0" {
 
-            guard
-                let addr =
-                    interface.ifa_addr
-            else {
-                continue
-            }
+                var hostname = [CChar](
+                    repeating: 0,
+                    count: Int(NI_MAXHOST)
+                )
 
-            if addr.pointee.sa_family ==
-                UInt8(AF_INET) {
+                let result = getnameinfo(
+                    addr,
+                    socklen_t(addr.pointee.sa_len),
+                    &hostname,
+                    socklen_t(hostname.count),
+                    nil,
+                    0,
+                    NI_NUMERICHOST
+                )
 
-                let interfaceName =
-                    String(
-                        cString:
-                            interface.ifa_name
+                if result == 0 {
+
+                    let ipAddress = String(
+                        cString: hostname
                     )
 
-                // Wi-Fi interface
-                if interfaceName == "en0" {
-
-                    var hostname =
-                        [CChar](
-                            repeating: 0,
-                            count:
-                                Int(NI_MAXHOST)
-                        )
-
-                    let result =
-                        getnameinfo(
-                            addr,
-                            socklen_t(
-                                addr.pointee.sa_len
-                            ),
-                            &hostname,
-                            socklen_t(
-                                hostname.count
-                            ),
-                            nil,
-                            0,
-                            NI_NUMERICHOST
-                        )
-
-                    if result == 0 {
-
-                        address =
-                            "http://\(String(
-                                cString: hostname
-                            )):8080"
-                    }
+                    address = "http://\(ipAddress):8080"
                 }
             }
         }
-
-        freeifaddrs(
-            interfaceAddress
-        )
-
-        return address
     }
+
+    freeifaddrs(interfaceAddress)
+
+    return address
 }
+
