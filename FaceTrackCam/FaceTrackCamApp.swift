@@ -3,12 +3,10 @@ import AVFoundation
 import Vision
 import Network
 import CoreImage.CIFilterBuiltins
-import PhotosUI
 
 enum BackgroundMode: String, CaseIterable {
     case off = "Off"
     case portrait = "Portrait"
-    case custom = "Custom"
 }
 
 @main
@@ -24,7 +22,6 @@ struct ContentView: View {
     @StateObject var camera = CameraTracker()
     @State private var isBlackoutMode = false
     @State private var previousBrightness: CGFloat = 0.5
-    @State private var selectedItem: PhotosPickerItem?
     
     var body: some View {
         ZStack {
@@ -126,7 +123,7 @@ struct ContentView: View {
                                 Spacer()
                             }
                             
-                            // Simplified Background Selector (Off, Portrait, Custom)
+                            // Simplified Background Selector (Off or Portrait)
                             Picker("Background", selection: $camera.backgroundMode) {
                                 ForEach(BackgroundMode.allCases, id: \.self) { mode in
                                     Text(mode.rawValue).tag(mode)
@@ -135,34 +132,6 @@ struct ContentView: View {
                             .pickerStyle(SegmentedPickerStyle())
                             .background(Color.white.opacity(0.8))
                             .cornerRadius(8)
-                            
-                            // Only show Photo Picker if "Custom" is selected
-                            if camera.backgroundMode == .custom {
-                                PhotosPicker(selection: $selectedItem, matching: .images, photoLibrary: .shared()) {
-                                    HStack {
-                                        Image(systemName: "photo.on.rectangle")
-                                        Text("Select Background Image")
-                                    }
-                                    .font(.caption)
-                                    .foregroundColor(.white)
-                                    .padding(.vertical, 8)
-                                    .padding(.horizontal, 12)
-                                    .background(Color.blue)
-                                    .cornerRadius(8)
-                                }
-                                .onChange(of: selectedItem) {
-                                    Task {
-                                        if let item = selectedItem,
-                                           let data = try? await item.loadTransferable(type: Data.self),
-                                           let uiImage = UIImage(data: data),
-                                           let ciImage = CIImage(image: uiImage) {
-                                            DispatchQueue.main.async {
-                                                camera.customBackgroundImage = ciImage
-                                            }
-                                        }
-                                    }
-                                }
-                            }
                         }
                         .padding(10)
                         .background(Color.black.opacity(0.7))
@@ -210,7 +179,6 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
     @Published var backgroundMode: BackgroundMode = .off
     @Published var isExposureLocked = false
     @Published var zoomIntensity: CGFloat = 2.8
-    @Published var customBackgroundImage: CIImage?
     
     @Published var availableCameras: [AVCaptureDevice] = []
     @Published var selectedCameraID: String = ""
@@ -315,7 +283,7 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         var currentCIImage = CIImage(cvPixelBuffer: pixelBuffer)
         
-        if backgroundMode != .off {
+        if backgroundMode == .portrait {
             try? VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:]).perform([segmentationRequest])
             if let maskPixelBuffer = segmentationRequest.results?.first?.pixelBuffer {
                 let maskImage = CIImage(cvPixelBuffer: maskPixelBuffer)
@@ -324,36 +292,14 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
                 let scaleY = currentCIImage.extent.height / maskImage.extent.height
                 let scaledMask = maskImage.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
                 
-                var generatedBackground: CIImage?
+                let blurFilter = CIFilter.gaussianBlur()
+                blurFilter.inputImage = currentCIImage
+                blurFilter.radius = 15.0
                 
-                switch backgroundMode {
-                case .portrait:
-                    let blurFilter = CIFilter.gaussianBlur()
-                    blurFilter.inputImage = currentCIImage
-                    blurFilter.radius = 15.0
-                    generatedBackground = blurFilter.outputImage?.cropped(to: currentCIImage.extent)
-                    
-                case .custom:
-                    if let customImg = customBackgroundImage {
-                        let scale = max(currentCIImage.extent.width / customImg.extent.width,
-                                        currentCIImage.extent.height / customImg.extent.height)
-                        
-                        let scaledBG = customImg.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
-                        
-                        let xOffset = (scaledBG.extent.width - currentCIImage.extent.width) / 2.0
-                        let yOffset = (scaledBG.extent.height - currentCIImage.extent.height) / 2.0
-                        let centeredBG = scaledBG.transformed(by: CGAffineTransform(translationX: -xOffset, y: -yOffset))
-                        
-                        generatedBackground = centeredBG.cropped(to: currentCIImage.extent)
-                    }
-                case .off:
-                    break
-                }
-                
-                if let bg = generatedBackground {
+                if let blurredImage = blurFilter.outputImage?.cropped(to: currentCIImage.extent) {
                     let blendFilter = CIFilter.blendWithMask()
                     blendFilter.inputImage = currentCIImage
-                    blendFilter.backgroundImage = bg
+                    blendFilter.backgroundImage = blurredImage
                     blendFilter.maskImage = scaledMask
                     if let blendedOutput = blendFilter.outputImage {
                         currentCIImage = blendedOutput
