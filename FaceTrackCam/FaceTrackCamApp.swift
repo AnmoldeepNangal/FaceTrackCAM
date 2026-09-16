@@ -29,23 +29,24 @@ struct ContentView: View {
 
     var body: some View {
         ZStack {
-            // Pure black studio background
+            // 1. Absolute Black Background
             Color.black.ignoresSafeArea()
 
             if isBlackoutMode {
-                // OLED Blackout Mode (Turns off pixels to prevent heat/burn-in)
+                // OLED Burn-in Protection Layer
                 Color.black.ignoresSafeArea()
                     .overlay(
-                        VStack(spacing: 8) {
+                        VStack(spacing: 12) {
                             Image(systemName: "moon.zzz.fill")
-                                .font(.system(size: 32))
+                                .font(.system(size: 40))
                                 .foregroundColor(.gray.opacity(0.6))
                             Text("BLACKOUT MODE ACTIVE")
-                                .font(.system(size: 14, weight: .bold, design: .monospaced))
+                                .font(.headline)
                                 .foregroundColor(.gray)
-                            Text("Tap anywhere to wake screen • Server running")
-                                .font(.system(size: 11))
+                            Text("Camera, Tracking & Server running natively.\nTap anywhere to wake.")
+                                .font(.caption)
                                 .foregroundColor(.gray.opacity(0.8))
+                                .multilineTextAlignment(.center)
                         }
                     )
                     .onTapGesture {
@@ -53,83 +54,88 @@ struct ContentView: View {
                         UIScreen.main.brightness = previousBrightness
                     }
             } else {
-                // Main Studio Interface Layout
-                HStack(spacing: 0) {
-                    
-                    // LEFT SIDEBAR: Compact Studio Controls (Liquid Glass)
-                    VStack(alignment: .leading, spacing: 10) {
-                        
-                        // 1. Status Bar Header
-                        HStack(spacing: 6) {
-                            HStack(spacing: 4) {
-                                Image(systemName: camera.batteryLevel > 0.2 ? "battery.100" : "battery.25")
-                                Text("\(Int(camera.batteryLevel * 100))%")
-                            }
+                // 2. The Camera Feed (Perfectly scaled, never stretched)
+                if let frame = camera.currentFrame {
+                    Image(decorative: frame, scale: 1.0, orientation: .up)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .ignoresSafeArea()
+                } else {
+                    VStack {
+                        ProgressView().tint(.white)
+                        Text("Starting Camera...").font(.caption).foregroundColor(.gray).padding(.top, 8)
+                    }
+                }
+
+                // 3. The Control Overlay (Strictly inside Safe Area so it never gets cut off)
+                VStack {
+                    // --- TOP STATUS BAR ---
+                    HStack {
+                        // Hardware Pill
+                        HStack(spacing: 4) {
+                            Image(systemName: camera.batteryLevel > 0.2 ? "battery.100" : "battery.25")
+                            Text("\(Int(camera.batteryLevel * 100))%")
                             Circle()
                                 .fill(camera.thermalColor)
-                                .frame(width: 5, height: 5)
-                            Text(camera.thermalString)
-                            
-                            Spacer()
-                            
-                            Button(action: {
-                                previousBrightness = UIScreen.main.brightness
-                                UIScreen.main.brightness = 0.0
-                                isBlackoutMode = true
-                            }) {
-                                Image(systemName: "moon.fill")
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundColor(.white)
-                                    .padding(6)
-                                    .background(.black.opacity(0.3))
-                                    .clipShape(Circle())
-                            }
+                                .frame(width: 6, height: 6)
                         }
-                        .font(.system(size: 10, weight: .medium, design: .rounded))
-                        .foregroundColor(.white)
-                        .padding(8)
-                        .background(.ultraThinMaterial)
-                        .cornerRadius(10)
-
-                        // 2. Network URL Badge
-                        HStack {
-                            Image(systemName: "wifi")
-                                .foregroundColor(.green)
-                                .font(.system(size: 10))
-                            Text(camera.getWiFiAddress())
-                                .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                                .foregroundColor(.green)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.5)
-                        }
-                        .padding(.horizontal, 8)
+                        .font(.system(size: 11, weight: .bold))
+                        .padding(.horizontal, 10)
                         .padding(.vertical, 6)
                         .background(.ultraThinMaterial)
-                        .cornerRadius(8)
+                        .clipShape(Capsule())
 
                         Spacer()
 
-                        // 3. Zoom Slider Control
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack {
-                                Text("Zoom")
-                                    .font(.system(size: 10, weight: .semibold))
-                                    .foregroundColor(.gray)
-                                Spacer()
-                                Text(String(format: "%.1fx", camera.zoomIntensity))
-                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                    .foregroundColor(.green)
-                            }
+                        // OBS URL Pill
+                        Text(camera.getWiFiAddress())
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .foregroundColor(.green)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(.ultraThinMaterial)
+                            .clipShape(Capsule())
+
+                        Spacer()
+
+                        // Blackout Button
+                        Button(action: {
+                            previousBrightness = UIScreen.main.brightness
+                            UIScreen.main.brightness = 0.0
+                            isBlackoutMode = true
+                        }) {
+                            Image(systemName: "moon.fill")
+                                .font(.system(size: 12))
+                                .padding(8)
+                                .background(.ultraThinMaterial)
+                                .clipShape(Circle())
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 5)
+
+                    Spacer()
+
+                    // --- BOTTOM CONTROL DASHBOARD (Liquid Glass) ---
+                    VStack(spacing: 16) {
+                        
+                        // Row 1: Zoom Slider
+                        HStack {
+                            Text("Zoom")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundColor(.white.opacity(0.8))
+                            
                             Slider(value: $camera.zoomIntensity, in: 1.0...4.0, step: 0.1)
                                 .tint(.green)
-                                .scaleEffect(0.9)
+                            
+                            Text(String(format: "%.1fx", camera.zoomIntensity))
+                                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                                .foregroundColor(.green)
+                                .frame(width: 35, alignment: .trailing)
                         }
-                        .padding(8)
-                        .background(.ultraThinMaterial)
-                        .cornerRadius(10)
 
-                        // 4. Lens Selector & Background Mode
-                        VStack(spacing: 6) {
+                        // Row 2: Lens & Background Selectors
+                        HStack(spacing: 12) {
                             Picker("Lens", selection: $camera.selectedCameraID) {
                                 ForEach(camera.availableCameras, id: \.uniqueID) { cam in
                                     Text(cam.localizedName).tag(cam.uniqueID)
@@ -137,14 +143,16 @@ struct ContentView: View {
                             }
                             .pickerStyle(.menu)
                             .tint(.white)
-                            .font(.system(size: 11, weight: .medium))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(6)
-                            .background(.black.opacity(0.3))
-                            .cornerRadius(6)
+                            .font(.system(size: 12, weight: .bold))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 6)
+                            .background(.black.opacity(0.4))
+                            .cornerRadius(8)
                             .onChange(of: camera.selectedCameraID) { _, newID in
                                 camera.switchCamera(cameraID: newID)
                             }
+
+                            Spacer()
 
                             Picker("Background", selection: $camera.backgroundMode) {
                                 ForEach(BackgroundMode.allCases, id: \.self) { mode in
@@ -152,21 +160,16 @@ struct ContentView: View {
                                 }
                             }
                             .pickerStyle(.segmented)
-                            .scaleEffect(0.85)
+                            .frame(maxWidth: 160)
 
                             if camera.backgroundMode == .custom {
                                 PhotosPicker(selection: $backgroundPickerItem, matching: .images) {
-                                    HStack {
-                                        Image(systemName: camera.hasCustomBackground ? "photo.fill" : "photo.badge.plus")
-                                        Text(camera.hasCustomBackground ? "Change Image" : "Pick Image")
-                                            .lineLimit(1)
-                                    }
-                                    .font(.system(size: 10, weight: .medium))
-                                    .foregroundColor(camera.hasCustomBackground ? .green : .white)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 5)
-                                    .background(.black.opacity(0.4))
-                                    .cornerRadius(6)
+                                    Image(systemName: camera.hasCustomBackground ? "photo.fill" : "photo.badge.plus")
+                                        .font(.system(size: 14))
+                                        .foregroundColor(camera.hasCustomBackground ? .green : .white)
+                                        .padding(8)
+                                        .background(.black.opacity(0.4))
+                                        .clipShape(Circle())
                                 }
                                 .onChange(of: backgroundPickerItem) { _, newItem in
                                     guard let item = newItem else { return }
@@ -179,60 +182,34 @@ struct ContentView: View {
                                 }
                             }
                         }
-                        .padding(8)
-                        .background(.ultraThinMaterial)
-                        .cornerRadius(10)
 
-                        // 5. Toggles (Face Tracking & AE/AF Lock)
-                        VStack(spacing: 6) {
-                            Toggle("Face Tracking", isOn: $camera.isFaceTrackingEnabled)
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundColor(.white)
+                        // Row 3: Tracking & Lock Toggles
+                        HStack {
+                            Toggle("Face Track", isOn: $camera.isFaceTrackingEnabled)
+                                .font(.system(size: 12, weight: .bold))
                                 .toggleStyle(SwitchToggleStyle(tint: .green))
-                                .scaleEffect(0.85)
 
-                            Divider().background(Color.gray.opacity(0.4))
+                            Divider()
+                                .frame(height: 16)
+                                .background(Color.gray.opacity(0.5))
+                                .padding(.horizontal, 10)
 
                             Toggle("AE/AF Lock", isOn: $camera.isExposureLocked)
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundColor(.white)
+                                .font(.system(size: 12, weight: .bold))
                                 .toggleStyle(SwitchToggleStyle(tint: .orange))
-                                .scaleEffect(0.85)
                                 .onChange(of: camera.isExposureLocked) { _, locked in
                                     camera.toggleExposureLock(lock: locked)
                                 }
                         }
-                        .padding(8)
-                        .background(.ultraThinMaterial)
-                        .cornerRadius(10)
-
                     }
-                    .frame(width: 240)
-                    .padding(10)
-
-                    // RIGHT MAIN VIEW: Fullscreen Edge-to-Edge 16:9 Camera Feed Canvas
-                    ZStack {
-                        Color.black
-                        if let frame = camera.currentFrame {
-                            Image(decorative: frame, scale: 1.0, orientation: .up)
-                                .resizable()
-                                .scaledToFill()
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .clipped()
-                        } else {
-                            VStack(spacing: 8) {
-                                ProgressView().tint(.white)
-                                Text("Starting Camera Feed...")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.gray)
-                            }
-                        }
-                    }
-                    .ignoresSafeArea()
+                    .padding(16)
+                    .background(.ultraThinMaterial) // Liquid Glass effect
+                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    .padding(.horizontal)
+                    .padding(.bottom, 10)
                 }
             }
         }
-        .ignoresSafeArea()
         .onAppear {
             UIDevice.current.isBatteryMonitoringEnabled = true
         }
@@ -352,7 +329,9 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
             if captureSession.canAddOutput(output) { captureSession.addOutput(output) }
         }
         if let output = captureSession.outputs.first as? AVCaptureVideoDataOutput, let connection = output.connection(with: .video) {
-            connection.videoOrientation = .landscapeRight
+            
+            // LOCKS THE SENSOR TO TRUE PORTRAIT (9:16)
+            connection.videoOrientation = .portrait
             if device.position == .front && connection.isVideoMirroringSupported { connection.isVideoMirrored = true }
         }
         captureSession.commitConfiguration()
@@ -431,8 +410,9 @@ class CameraTracker: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleB
             let faceW = currentFaceRect.size.width * width
             let faceH = currentFaceRect.size.height * height
 
+            // MATHEMATICALLY LOCKED TO 9:16 VERTICAL ASPECT RATIO
             let cropW = min(faceW * zoomIntensity, width)
-            let cropH = cropW * (9.0/16.0)
+            let cropH = cropW * (16.0 / 9.0)
             let cropX = max(0, min((faceX + faceW/2) - (cropW / 2), width - cropW))
             let cropY = max(0, min((faceY + faceH/2) - (cropH / 2), height - cropH))
 
