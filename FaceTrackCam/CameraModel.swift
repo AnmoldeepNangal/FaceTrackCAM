@@ -250,7 +250,7 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
     }
 
     private func updateOrientation() {
-        let newOrientation: AVCaptureVideoOrientation = .portrait
+        let newOrientation: AVCaptureVideoOrientation = .landscapeRight
         captureQueue.async { self.orientation = newOrientation; self.applyOrientation(); self.processor.reset() }
     }
 

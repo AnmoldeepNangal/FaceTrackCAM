@@ -28,7 +28,7 @@ struct ProcessingSettings {
     var tracking = true
     var intensity: CGFloat = 1.8
     var background: BackgroundMode = .off
-    var format: VideoFormat = .portrait
+    var format: VideoFormat = .landscape
     var quality: VideoQuality = .high
     var mirrorStream = false
     var outputSize: CGSize {

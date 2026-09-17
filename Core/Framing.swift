@@ -10,7 +10,7 @@ enum Framing {
         if let face {
             // Keep the whole upper body in frame. Lower intensity means more room;
             // the default is deliberately wide enough for shoulders, chest, and headwear.
-            width = min(maxWidth, max(maxWidth * 0.62, face.width * bounds.width / (0.22 * max(0.8, intensity))))
+            width = min(maxWidth, max(maxWidth * 0.82, face.width * bounds.width / (0.13 * max(0.8, intensity))))
             // Vision and Core Image both use a bottom-left origin.
             center = CGPoint(x: bounds.minX + face.midX * bounds.width,
                              y: bounds.minY + (face.midY + face.height * 0.18) * bounds.height)
