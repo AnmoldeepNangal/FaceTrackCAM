@@ -24,7 +24,13 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
     @Published private(set) var streaming = false
     @Published private(set) var viewers = 0
     @Published private(set) var streamStarted: Date?
-    @Published private(set) var token = UUID().uuidString.replacingOccurrences(of: "-", with: "")
+    @Published private(set) var token = CameraLibrary.stableSecret("streamKey")
+    let remoteKey = CameraLibrary.stableSecret("remoteKey")
+    @Published var connectionAlerts = true
+    @Published private(set) var backgrounds: [BackgroundAsset] = CameraLibrary.load("backgrounds.json", fallback: [])
+    @Published private(set) var presets: [CameraPreset] = CameraLibrary.load("presets.json", fallback: [])
+    @Published private(set) var selectedBackgroundID: UUID?
+    private var backgroundRequest = UUID()
     @Published private(set) var wifiAddress: String?
     @Published private(set) var battery: Int?
     @Published private(set) var thermal = "Normal"
@@ -65,7 +71,7 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
     private var oledState = OLEDSaverState()
     private var previousBrightness: CGFloat?
     private var previousIdleTimer: Bool?
-    private var lastFrameTime: TimeInterval = 0
+    private var nextFrameTime: TimeInterval = 0
     private var statsTime: TimeInterval = 0
     private var statsFrames = 0
     private var lastErrorTime: TimeInterval = 0
@@ -73,11 +79,16 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
 
     override init() {
         super.init()
+        server.onRemoteState = { [weak self] in self?.remoteState() ?? [:] }
+        server.onRemoteCommand = { [weak self] command in self?.applyRemote(command) }
         server.onStatus = { [weak self] status in
             guard let self else { return }
             self.starting = false
             if status.running && !self.streaming {
                 self.streamStarted = Date()
+            }
+            if self.connectionAlerts && self.streaming && status.running && self.viewers != status.clients {
+                UINotificationFeedbackGenerator().notificationOccurred(status.clients > self.viewers ? .success : .warning)
             }
             self.streaming = status.running
             self.viewers = status.clients
@@ -227,19 +238,106 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         }
     }
 
+    func relockSubject() { captureQueue.async { self.processor.relockRequested = true } }
+
+    func setBackgroundMode(_ mode: BackgroundMode) {
+        backgroundRequest = UUID()
+        settings.background = mode
+    }
+
     func loadBackground(_ data: Data) {
+        let request = UUID(); backgroundRequest = request
         captureQueue.async {
             guard let source = CGImageSourceCreateWithData(data as CFData, nil),
                   let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true,
                     kCGImageSourceThumbnailMaxPixelSize: 1920, kCGImageSourceCreateThumbnailWithTransform: true] as CFDictionary) else {
                 self.report("This photo could not be opened. Choose another image."); return
             }
-            self.processor.background = CIImage(cgImage: image)
-            DispatchQueue.main.async { self.hasBackground = true; self.settings.background = .custom }
+            do {
+                let asset = BackgroundAsset(id: UUID())
+                try FileManager.default.createDirectory(at: CameraLibrary.directory, withIntermediateDirectories: true)
+                guard let jpeg = UIImage(cgImage: image).jpegData(compressionQuality: 0.9) else { return }
+                try jpeg.write(to: asset.url, options: .atomic)
+                DispatchQueue.main.async {
+                    self.backgrounds.insert(asset, at: 0); self.persistLibrary()
+                    if self.backgroundRequest == request { self.selectBackground(asset) }
+                }
+            } catch { self.report("Background could not be saved: \(error.localizedDescription)") }
         }
     }
 
+    func selectBackground(_ asset: BackgroundAsset) {
+        let request = UUID(); backgroundRequest = request
+        captureQueue.async {
+            guard let image = CIImage(contentsOf: asset.url) else { self.report("Saved background is unavailable."); return }
+            DispatchQueue.main.async {
+                guard self.backgroundRequest == request else { return }
+                self.captureQueue.async { self.processor.background = image }
+                self.selectedBackgroundID = asset.id; self.hasBackground = true; self.settings.background = .custom
+            }
+        }
+    }
+
+    func favoriteBackground(_ asset: BackgroundAsset) {
+        if let index = backgrounds.firstIndex(where: { $0.id == asset.id }) { backgrounds[index].favorite.toggle(); persistLibrary() }
+    }
+
+    func removeBackground(_ asset: BackgroundAsset) {
+        if selectedBackgroundID == asset.id { clearBackground() }
+        backgrounds.removeAll { $0.id == asset.id }
+        try? FileManager.default.removeItem(at: asset.url)
+        persistLibrary()
+    }
+
+    func clearRecentBackgrounds() {
+        for asset in backgrounds where !asset.favorite { removeBackground(asset) }
+    }
+
+    private func persistLibrary() {
+        do { try CameraLibrary.save(backgrounds, name: "backgrounds.json") }
+        catch { self.error = "Background library could not be saved." }
+    }
+
+    func savePreset(name: String) {
+        let name = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(48))
+        guard !name.isEmpty else { return }
+        presets.append(CameraPreset(name: name, settings: settings, cameraID: selectedCamera, mirrorPreview: mirrorPreview,
+            exposure: exposure, exposureLocked: exposureLocked, temperature: whiteBalanceTemperature,
+            whiteBalanceLocked: whiteBalanceLocked, backgroundID: selectedBackgroundID, oledSaver: oledSaverEnabled,
+            grid: UserDefaults.standard.bool(forKey: "framingGrid")))
+        persistPresets()
+    }
+
+    func renamePreset(_ id: UUID, name: String) {
+        let name = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(48))
+        guard !name.isEmpty, let index = presets.firstIndex(where: { $0.id == id }) else { return }
+        presets[index].name = name; persistPresets()
+    }
+
+    func deletePreset(_ id: UUID) { presets.removeAll { $0.id == id }; persistPresets() }
+
+    private func persistPresets() {
+        do { try CameraLibrary.save(presets, name: "presets.json") }
+        catch { error = "Preset could not be saved." }
+    }
+
+    func applyPreset(_ preset: CameraPreset) {
+        var restored = preset.settings
+        if streaming || starting { restored.quality = settings.quality }
+        if restored.background == .custom {
+            restored.background = .off
+            if let asset = backgrounds.first(where: { $0.id == preset.backgroundID }) { selectBackground(asset) }
+        } else { backgroundRequest = UUID() }
+        settings = restored; mirrorPreview = preset.mirrorPreview
+        exposure = preset.exposure; exposureLocked = preset.exposureLocked
+        whiteBalanceTemperature = preset.temperature; whiteBalanceLocked = preset.whiteBalanceLocked
+        oledSaverEnabled = preset.oledSaver
+        UserDefaults.standard.set(preset.grid, forKey: "framingGrid")
+        if cameras.contains(where: { $0.id == preset.cameraID }), preset.cameraID != selectedCamera { switchCamera(preset.cameraID) }
+    }
+
     func clearBackground() {
+        backgroundRequest = UUID(); selectedBackgroundID = nil
         settings.background = .off; hasBackground = false
         captureQueue.async { self.processor.background = nil }
     }
@@ -313,9 +411,8 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         if streaming || starting { stopStream(); return }
         guard ProcessInfo.processInfo.thermalState != .critical else { error = "Let the phone cool down before starting a stream."; return }
         guard ready else { error = "Wait for the camera preview before starting."; return }
-        token = UUID().uuidString.replacingOccurrences(of: "-", with: "")
         starting = true
-        server.start(token: token)
+        server.start(token: token, remoteToken: remoteKey)
     }
 
     func stopStream() {
@@ -377,9 +474,10 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         autoreleasepool {
             let time = ProcessInfo.processInfo.systemUptime
             let thermal = ProcessInfo.processInfo.thermalState
-            let limit: Double = thermal == .critical ? 5 : thermal == .serious ? 15 : 30
-            guard time - lastFrameTime >= 0.9 / limit, let buffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
-            lastFrameTime = time
+            let requested = processor.settings.quality.frameRate
+            let limit: Double = thermal == .critical ? 5 : thermal == .serious ? min(15, requested) : requested
+            guard time + 0.001 >= nextFrameTime, let buffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+            nextFrameTime = max(time, nextFrameTime + 1 / limit)
             do {
                 let image = try processor.process(buffer, time: time)
                 // Materialize before releasing the camera buffer; preview and stream share it.

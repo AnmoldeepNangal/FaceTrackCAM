@@ -51,6 +51,10 @@ jobs:
           name: FaceTrackCam-unsigned-IPA
           path: FaceTrackCam.ipa
       - uses: actions/upload-artifact@v4
+        with:
+          name: FacePull-Windows-USB
+          path: USB/
+      - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: build-logs

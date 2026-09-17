@@ -1,0 +1,27 @@
+import Foundation
+
+enum RemotePage {
+    static let html = #"""
+    <!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>FacePull Remote</title>
+    <style>:root{color-scheme:dark;font-family:system-ui}body{margin:0;background:#101115;color:#fff}main{max-width:660px;margin:auto;padding:24px}h1{font-size:26px}section{padding:16px;margin:12px 0;border:1px solid #ffffff20;border-radius:24px;background:#ffffff09}label{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:16px 0}input,select,button{font:inherit;border-radius:16px;padding:12px;border:1px solid #ffffff30;background:#ffffff12;color:inherit}button{cursor:pointer}input[type=range]{width:65%;accent-color:#68b8ff}input[type=checkbox]{width:24px;height:24px}small{color:#bbc0ca}#status{min-height:24px}#controls[hidden]{display:none}input[type=password]{max-width:65%}</style></head>
+    <body><main><h1>FacePull Remote</h1><section id="login"><label>Remote password <input id="key" type="password" autocomplete="current-password"></label><button id="connect">Connect</button><p><small>Copy the password from FacePull → Settings → Connect. Keep the app streaming.</small></p></section><p id="status" role="status"></p>
+    <div id="controls" hidden><section><label>Lens <select id="lens"></select></label><label>Quality <select id="quality"></select></label><small>Stop the stream on the phone to change quality.</small></section>
+    <section><label>FaceTrack <input id="tracking" type="checkbox"></label><label>Framing <input id="intensity" type="range" min="0.8" max="2.2" step="0.1"></label><label>People <select id="subject"><option>Lock me</option><option>Auto widen</option></select></label><button data-command="relock">Lock current subject</button></section>
+    <section><label>Exposure lock <input id="exposureLocked" type="checkbox"></label><label>Exposure <input id="exposure" type="range" min="-2" max="2" step="0.1"></label><label>WB lock <input id="whiteBalanceLocked" type="checkbox"></label><label>Temperature <input id="temperature" type="range" min="2500" max="6500" step="50"></label></section>
+    <section><label>Background <select id="background"><option value="Off">Off</option><option value="Blur">Portrait</option></select></label><label>Custom <select id="asset"></select></label><button id="applyAsset">Apply selected background</button></section>
+    <section><label>Preset <select id="preset"></select></label><button id="applyPreset">Apply preset</button><button id="savePreset">Save current setup</button><label>Mirror stream <input id="mirror" type="checkbox"></label><button data-command="wake">Wake phone screen</button><button id="logout">Disconnect remote</button></section></div></main>
+    <script>
+    const $=id=>document.getElementById(id);let key='',poll,busy=false;
+    function choices(id,items){const el=$(id),signature=JSON.stringify(items);if(el.dataset.items===signature)return;el.dataset.items=signature;el.replaceChildren(...items.map(([value,label])=>{const o=document.createElement('option');o.value=value;o.textContent=label;return o}))}
+    function render(s){$('controls').hidden=false;$('login').hidden=true;$('status').textContent=s.error||`${s.fps} fps · ${s.thermal} · ${s.viewers} viewers`;choices('lens',s.cameras.map(x=>[x.id,x.name]));choices('quality',s.qualities.map(x=>[x.id,x.name]));choices('asset',s.backgrounds.map(x=>[x.id,x.name]));choices('preset',s.presets.map(x=>[x.id,x.name]));for(const id of ['lens','quality','tracking','intensity','subject','exposureLocked','exposure','whiteBalanceLocked','temperature','background','mirror']){const e=$(id);if(document.activeElement===e)continue;if(e.type==='checkbox')e.checked=!!s[id];else e.value=s[id]}$('quality').disabled=s.streaming}
+    async function request(command){const response=await fetch('/remote/'+(command?'control':'state')+'?token='+encodeURIComponent(key),command?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(command),cache:'no-store'}:{cache:'no-store'});if(response.status===403)throw Error('Incorrect remote password');const state=await response.json();render(state);if(!response.ok)throw Error(state.error||'Request failed')}
+    async function send(action,value){try{await request({action,value})}catch(e){$('status').textContent=e.message}}
+    $('connect').onclick=async()=>{key=$('key').value.trim();try{await request();clearInterval(poll);poll=setInterval(async()=>{if(busy)return;busy=true;try{await request()}catch(e){$('status').textContent='Connection lost — reconnecting…'}finally{busy=false}},2000)}catch(e){$('status').textContent=e.message}};
+    for(const id of ['lens','quality','tracking','intensity','subject','exposureLocked','exposure','whiteBalanceLocked','temperature','background','mirror'])$(id).onchange=e=>send(id,e.target.type==='checkbox'?e.target.checked:e.target.value);
+    document.querySelectorAll('[data-command]').forEach(b=>b.onclick=()=>send(b.dataset.command));
+    $('applyAsset').onclick=()=>send('asset',$('asset').value);$('applyPreset').onclick=()=>send('preset',$('preset').value);$('savePreset').onclick=()=>{const name=prompt('Preset name');if(name)send('savePreset',name)};
+    $('logout').onclick=()=>{clearInterval(poll);key='';$('key').value='';$('controls').hidden=true;$('login').hidden=false;$('status').textContent='Remote disconnected. Video continues.'};
+    </script></body></html>
+    """#
+}
+

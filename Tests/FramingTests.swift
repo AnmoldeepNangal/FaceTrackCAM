@@ -3,6 +3,16 @@ import CoreGraphics
 @testable import FaceTrackCore
 
 final class FramingTests: XCTestCase {
+    func testGroupFramingIncludesSeparatedFaces() {
+        let faces = [CGRect(x: 0.08, y: 0.4, width: 0.12, height: 0.2), CGRect(x: 0.8, y: 0.5, width: 0.12, height: 0.2)]
+        let group = Framing.group(faces)!
+        XCTAssertEqual(group.minX, 0.08, accuracy: 0.001)
+        XCTAssertEqual(group.maxX, 0.92, accuracy: 0.001)
+        let bounds = CGRect(x: 0, y: 0, width: 1920, height: 1080)
+        let crop = Framing.groupCrop(in: bounds, aspect: 16 / 9, faces: group)
+        XCTAssertEqual(crop, bounds)
+        XCTAssertNil(Framing.group([]))
+    }
     func testCropStaysInsideImageForEdgeFacesAndBothFormats() {
         for size in [CGSize(width: 1920, height: 1080), CGSize(width: 1080, height: 1920)] {
             let bounds = CGRect(origin: .zero, size: size)

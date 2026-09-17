@@ -66,10 +66,16 @@ struct CameraScreen: View {
     @State private var loadingPhoto = false
     @State private var iconAngle: Angle = .zero
     @State private var showPhotoPicker = false
+    @State private var showPresets = false
+    @State private var presetName = ""
+    @State private var editingPreset: UUID?
+    @State private var namePreset = false
     @AppStorage("framingGrid") private var showGrid = false
 
     var body: some View {
         preview.ignoresSafeArea()
+        .contentShape(Rectangle())
+        .onTapGesture { dismissTools() }
         .overlay { if showGrid { framingGrid.ignoresSafeArea().allowsHitTesting(false) } }
         .safeAreaInset(edge: .top, spacing: 0) { topBar.background(Color.clear) }
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -91,6 +97,14 @@ struct CameraScreen: View {
             if value == .active { camera.activate() } else if value == .background { camera.deactivate() }
         }
         .photosPicker(isPresented: $showPhotoPicker, selection: $photo, matching: .images)
+        .alert(editingPreset == nil ? "Save preset" : "Rename preset", isPresented: $namePreset) {
+            TextField("Name", text: $presetName)
+            Button("Save") {
+                if let id = editingPreset { camera.renamePreset(id, name: presetName) }
+                else { camera.savePreset(name: presetName) }
+            }
+            Button("Cancel", role: .cancel) {}
+        }
 
         .animation(.spring(response: 0.35, dampingFraction: 0.7), value: showRecentBackground)
         .animation(.easeInOut(duration: 0.25), value: camera.streaming)
@@ -193,6 +207,12 @@ struct CameraScreen: View {
         return panel == nil ? 0.9 : 0.8
     }
 
+    private func dismissTools() {
+        withAnimation(.interpolatingSpring(stiffness: 300, damping: 20)) {
+            panel = nil; focusedTool = nil; showRecentBackground = false
+        }
+    }
+
     @ViewBuilder
     private func panelContent(_ panel: ToolPanel) -> some View {
         switch panel {
@@ -205,9 +225,22 @@ struct CameraScreen: View {
     }
 
     private var trackingPanel: some View {
+        VStack(spacing: 8) {
         sliderRow("Face tracking", enabled: $camera.settings.tracking,
             value: Binding(get: { Float(camera.settings.intensity) }, set: { camera.settings.intensity = CGFloat($0) }),
             range: 0.8...2.2, center: 1.8, step: 0.1)
+            HStack(spacing: 8) {
+                ForEach(SubjectMode.allCases, id: \.self) { mode in
+                    Button {
+                        camera.settings.subjectMode = mode
+                        if mode == .lock { camera.relockSubject() }
+                    } label: {
+                        Text(mode.rawValue).font(.subheadline.weight(.medium)).padding(.horizontal, 16).frame(minHeight: 44)
+                            .glassCapsule(tint: camera.settings.subjectMode == mode ? .white.opacity(0.18) : .clear)
+                    }
+                }
+            }
+        }
     }
 
     private var exposurePanel: some View {
@@ -241,16 +274,7 @@ struct CameraScreen: View {
                 backgroundChoice(.custom, "Custom")
             }
             if showRecentBackground {
-                HStack(spacing: 8) {
-                    if camera.hasBackground {
-                        Button("Recent") { camera.settings.background = .custom }
-                            .padding(8).glassCapsule()
-                        Button("Clear", role: .destructive) { camera.clearBackground() }
-                            .padding(8).glassCapsule()
-                    }
-                    Button("Photos") { showPhotoPicker = true }
-                        .padding(8).glassCapsule().disabled(loadingPhoto)
-                }
+                backgroundLibrary
             }
         }.background(Color.clear)
     }
@@ -258,15 +282,48 @@ struct CameraScreen: View {
     private func backgroundChoice(_ mode: BackgroundMode, _ title: String) -> some View {
         Button {
             if mode == .custom {
-                if camera.hasBackground { showRecentBackground.toggle() }
-                else { showPhotoPicker = true }
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) { showRecentBackground.toggle() }
             } else {
-                camera.settings.background = mode; showRecentBackground = false
+                camera.setBackgroundMode(mode); showRecentBackground = false
             }
         } label: {
             Text(title).font(.subheadline.weight(.medium)).frame(maxWidth: .infinity, minHeight: 48)
                 .glassCapsule()
+                .contentShape(Capsule())
         }.foregroundStyle(camera.settings.background == mode ? Color.blue : .white)
+    }
+
+    private var backgroundLibrary: some View {
+        VStack(spacing: 8) {
+            HStack {
+                Button { photo = nil; showPhotoPicker = true } label: {
+                    Label("Photos", systemImage: "photo.badge.plus").padding(12).glassCapsule()
+                }.disabled(loadingPhoto)
+                Spacer()
+                Button("Clear recents", role: .destructive) { camera.clearRecentBackgrounds() }
+                    .padding(12).glassCapsule().disabled(camera.backgrounds.allSatisfy(\.favorite))
+            }
+            if !camera.backgrounds.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: 8) {
+                        ForEach(camera.backgrounds.sorted { $0.favorite && !$1.favorite }) { asset in
+                            Button { camera.selectBackground(asset) } label: {
+                                Group {
+                                    if let image = asset.thumbnail { Image(uiImage: image).resizable().scaledToFill() }
+                                    else { Image(systemName: "photo") }
+                                }.frame(width: 80, height: 64).clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                    .overlay(alignment: .topTrailing) { if asset.favorite { Image(systemName: "star.fill").font(.caption).padding(4) } }
+                                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(camera.selectedBackgroundID == asset.id && camera.settings.background == .custom ? .blue : .clear, lineWidth: 2))
+                            }.accessibilityLabel("Saved background")
+                            .contextMenu {
+                                Button(asset.favorite ? "Unfavorite" : "Favorite", systemImage: "star") { camera.favoriteBackground(asset) }
+                                Button("Remove", systemImage: "trash", role: .destructive) { camera.removeBackground(asset) }
+                            }
+                        }
+                    }.padding(4)
+                }
+            }
+        }.transition(.scale(scale: 0.95, anchor: .bottom).combined(with: .opacity))
     }
 
     private var framingGrid: some View {
@@ -293,9 +350,9 @@ struct CameraScreen: View {
                     .padding(8).liquidGlass(cornerRadius: 16)
                 Menu {
                     ForEach(VideoQuality.allCases) { quality in
-                        Button(quality.rawValue) { camera.settings.quality = quality }
+                        Button(quality.label) { camera.settings.quality = quality }
                     }
-                } label: { settingRow("Quality", camera.settings.quality.rawValue, "sparkles.tv") }
+                } label: { settingRow("Quality", camera.settings.quality.label, "sparkles.tv") }
                     .padding(8).liquidGlass(cornerRadius: 16).disabled(camera.streaming || camera.starting)
                 Toggle("Grid", isOn: $showGrid).padding(8).liquidGlass(cornerRadius: 16)
                     .onChange(of: showGrid) { _, _ in FaceTrackHaptics.tap() }
@@ -303,6 +360,12 @@ struct CameraScreen: View {
                     .onChange(of: camera.mirrorPreview) { _, _ in FaceTrackHaptics.tap() }
                 Toggle("Mirror stream", isOn: $camera.settings.mirrorStream).padding(8).liquidGlass(cornerRadius: 16)
                     .onChange(of: camera.settings.mirrorStream) { _, _ in FaceTrackHaptics.tap() }
+                Toggle("Connection haptics", isOn: $camera.connectionAlerts).padding(8).liquidGlass(cornerRadius: 16)
+                    .onChange(of: camera.connectionAlerts) { _, _ in FaceTrackHaptics.tap() }
+                Button { withAnimation(.spring()) { showPresets.toggle() } } label: {
+                    Label("Presets", systemImage: "slider.horizontal.3").frame(maxWidth: .infinity, alignment: .leading).padding(12).liquidGlass(cornerRadius: 16)
+                }
+                if showPresets { presetsPanel }
                 Button {
                     withAnimation(.spring()) { showConnection.toggle() }
                 } label: {
@@ -330,8 +393,29 @@ struct CameraScreen: View {
             LabeledContent("Viewers", value: "\(camera.viewers)")
             if let url = camera.wifiURL { compactURLRow("Wi‑Fi", url) }
             compactURLRow("USB", camera.usbURL)
+            if let host = camera.wifiAddress { compactURLRow("Remote · Wi-Fi", "http://\(host):8080/remote") }
+            compactURLRow("Remote · USB", "http://127.0.0.1:18080/remote")
+            compactURLRow("Remote password", camera.remoteKey)
+            Text("\(camera.fps) fps · \(camera.thermal)").font(.caption)
         }
         .background(Color.clear)
+    }
+
+    private var presetsPanel: some View {
+        VStack(spacing: 8) {
+            Button("Save current setup") { editingPreset = nil; presetName = ""; namePreset = true }
+                .padding(12).glassCapsule()
+            ForEach(camera.presets) { preset in
+                HStack {
+                    Button(preset.name) { camera.applyPreset(preset) }.frame(maxWidth: .infinity, alignment: .leading)
+                    Menu {
+                        Button("Rename") { editingPreset = preset.id; presetName = preset.name; namePreset = true }
+                        Button("Delete", role: .destructive) { camera.deletePreset(preset.id) }
+                    } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44) }
+                }.padding(.horizontal, 12).liquidGlass(cornerRadius: 16)
+            }
+            if camera.streaming { Text("Quality stays unchanged while live.").font(.caption) }
+        }
     }
 
     private func compactURLRow(_ title: String, _ url: String) -> some View {

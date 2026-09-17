@@ -1,0 +1,51 @@
+import Foundation
+
+extension CameraModel {
+    func remoteState() -> [String: Any] {
+        ["streaming": streaming, "fps": fps, "thermal": thermal, "viewers": viewers,
+         "lens": selectedCamera, "quality": settings.quality.rawValue, "tracking": settings.tracking,
+         "intensity": Double(settings.intensity), "subject": settings.subjectMode.rawValue,
+         "exposure": exposure, "exposureLocked": exposureLocked, "temperature": whiteBalanceTemperature,
+         "whiteBalanceLocked": whiteBalanceLocked, "background": settings.background.rawValue, "mirror": settings.mirrorStream,
+         "cameras": cameras.map { ["id": $0.id, "name": $0.name] },
+         "qualities": VideoQuality.allCases.map { ["id": $0.rawValue, "name": $0.label] },
+         "presets": presets.map { ["id": $0.id.uuidString, "name": $0.name] },
+         "backgrounds": backgrounds.enumerated().map { ["id": $0.element.id.uuidString, "name": "\($0.element.favorite ? "★ " : "")Background \($0.offset + 1)"] }]
+    }
+
+    func applyRemote(_ command: [String: Any]) -> String? {
+        guard let action = command["action"] as? String else { return "Missing action" }
+        let value = command["value"] as? String ?? ""
+        switch action {
+        case "lens": guard cameras.contains(where: { $0.id == value }) else { return "Unknown lens" }; switchCamera(value)
+        case "quality":
+            guard !streaming && !starting else { return "Stop streaming before changing quality" }
+            guard let quality = VideoQuality(rawValue: value) else { return "Unknown quality" }; settings.quality = quality
+        case "tracking", "exposureLocked", "whiteBalanceLocked", "mirror":
+            guard let flag = command["value"] as? Bool else { return "Expected on/off" }
+            switch action {
+            case "tracking": settings.tracking = flag
+            case "exposureLocked": exposureLocked = flag
+            case "whiteBalanceLocked": whiteBalanceLocked = flag
+            default: settings.mirrorStream = flag
+            }
+        case "intensity", "exposure", "temperature":
+            guard let number = Float(value), number.isFinite else { return "Invalid adjustment" }
+            switch action {
+            case "intensity": settings.intensity = CGFloat(min(2.2, max(0.8, number)))
+            case "exposure": exposure = min(2, max(-2, number))
+            default: whiteBalanceLocked = true; whiteBalanceTemperature = min(6500, max(2500, number))
+            }
+        case "subject": guard let mode = SubjectMode(rawValue: value) else { return "Unknown mode" }; settings.subjectMode = mode
+        case "background": guard let mode = BackgroundMode(rawValue: value), mode != .custom else { return "Choose a saved background" }; setBackgroundMode(mode)
+        case "asset": guard let asset = backgrounds.first(where: { $0.id.uuidString == value }) else { return "Unknown background" }; selectBackground(asset)
+        case "preset": guard let preset = presets.first(where: { $0.id.uuidString == value }) else { return "Unknown preset" }; applyPreset(preset)
+        case "savePreset": guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return "Enter a name" }; savePreset(name: value)
+        case "relock": relockSubject()
+        case "wake": wakeFromOLEDSaver()
+        default: return "Unknown action"
+        }
+        return nil
+    }
+}
+

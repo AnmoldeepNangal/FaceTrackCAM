@@ -19,6 +19,8 @@ final class StreamServer {
     }
 
     var onStatus: ((Status) -> Void)?
+    var onRemoteState: (() -> [String: Any])?
+    var onRemoteCommand: (([String: Any]) -> String?)?
     private let queue = DispatchQueue(label: "cam.network", qos: .userInitiated)
     private let gate = NSLock()
     private var framePending = false
@@ -27,14 +29,16 @@ final class StreamServer {
     private var clients: [UUID: Client] = [:]
     private var timer: DispatchSourceTimer?
     private var token = ""
+    private var remoteToken: String?
     private var running = false
     private var size = CGSize(width: 1280, height: 720)
     private var frames: UInt64 = 0
 
-    func start(token: String) {
+    func start(token: String, remoteToken: String? = nil) {
         queue.async {
             self.stopInternal()
             self.token = token
+            self.remoteToken = remoteToken
             self.frames = 0
             do {
                 let listener = try NWListener(using: .tcp, on: 8080)
@@ -116,7 +120,7 @@ final class StreamServer {
             guard let self, let client, self.clients[id] === client else { return }
             if error != nil || complete { self.remove(id); return }
             if let data { client.request.append(data) }
-            switch StreamProtocol.parse(client.request, token: self.token) {
+            switch StreamProtocol.parse(client.request, token: self.token, remoteToken: self.remoteToken) {
             case .incomplete: self.read(id)
             case .rejected(let status): self.reply(id, status: status, type: "text/plain", body: Data("Request rejected".utf8))
             case .route(let path): self.route(path, id: id)
@@ -126,8 +130,26 @@ final class StreamServer {
 
     private func route(_ path: String, id: UUID) {
         guard let client = clients[id] else { return }
+        let request = client.request
         client.request.removeAll()
         switch path {
+        case "/remote":
+            reply(id, type: "text/html; charset=utf-8", body: Data(RemotePage.html.utf8))
+        case "/remote/state", "/remote/control":
+            let body = request.range(of: Data("\r\n\r\n".utf8)).map { Data(request[$0.upperBound...]) } ?? Data()
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                var commandError: String?
+                if path == "/remote/control" {
+                    if let command = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any] {
+                        commandError = self.onRemoteCommand?(command) ?? (self.onRemoteCommand == nil ? "Remote control unavailable" : nil)
+                    } else { commandError = "Invalid command" }
+                }
+                var state = self.onRemoteState?() ?? [:]
+                if let commandError { state["error"] = commandError }
+                let data = (try? JSONSerialization.data(withJSONObject: state)) ?? Data("{}".utf8)
+                self.queue.async { self.reply(id, status: commandError == nil ? 200 : 400, type: "application/json", body: data) }
+            }
         case "/stream.mjpg":
             guard clients.values.filter({ $0.streaming }).count < 3 else {
                 reply(id, status: 503, type: "text/plain", body: Data("Three viewers are already connected.".utf8)); return

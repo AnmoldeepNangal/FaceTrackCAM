@@ -29,8 +29,24 @@ final class StreamProtocolTests: XCTestCase {
         let expected = Data("--facetrack-frame\r\nContent-Type: image/jpeg\r\nContent-Length: 4\r\n\r\n".utf8) + jpeg + Data("\r\n".utf8)
         XCTAssertEqual(StreamProtocol.frame(jpeg), expected)
     }
+
+    func testRemoteCredentialsAndFragmentedCommands() {
+        func remote(_ request: String) -> HTTPRequestResult {
+            StreamProtocol.parse(Data(request.utf8), token: "video", remoteToken: "control")
+        }
+        XCTAssertEqual(remote("GET /remote HTTP/1.1\r\n\r\n"), .route("/remote"))
+        XCTAssertEqual(remote("GET /remote/state?token=video HTTP/1.1\r\n\r\n"), .rejected(403))
+        XCTAssertEqual(remote("GET /remote/state?token=control HTTP/1.1\r\n\r\n"), .route("/remote/state"))
+        XCTAssertEqual(remote("GET /remote/control?token=control HTTP/1.1\r\n\r\n"), .rejected(405))
+        let header = "POST /remote/control?token=control HTTP/1.1\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n"
+        XCTAssertEqual(remote(header + "{"), .incomplete)
+        XCTAssertEqual(remote(header + "{}"), .route("/remote/control"))
+        XCTAssertEqual(remote(header + "{}extra"), .rejected(400))
+        XCTAssertEqual(StreamProtocol.parse(Data("GET /remote/state?token HTTP/1.1\r\n\r\n".utf8), token: "video"), .rejected(403))
+    }
     func testHTTPContentLengthCountsUTF8Bytes() {
         let data = StreamProtocol.response(type: "text/plain", body: Data("✓".utf8))
         XCTAssertTrue(String(decoding: data, as: UTF8.self).contains("Content-Length: 3\r\n"))
     }
 }
+

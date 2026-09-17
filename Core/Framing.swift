@@ -2,6 +2,19 @@ import Foundation
 import CoreGraphics
 
 enum Framing {
+    static func group(_ faces: [CGRect]) -> CGRect? {
+        faces.reduce(nil) { result, face in result.map { $0.union(face) } ?? face }
+    }
+
+    static func groupCrop(in bounds: CGRect, aspect: CGFloat, faces: CGRect) -> CGRect {
+        let expanded = CGRect(x: faces.minX - faces.height * 0.8, y: faces.minY - faces.height * 1.6,
+                              width: faces.width + faces.height * 1.6, height: faces.height * 3.3)
+        let width = min(bounds.width, bounds.height * aspect,
+                        max(bounds.width * 0.82, expanded.width * bounds.width, expanded.height * bounds.height * aspect))
+        return clamp(CGRect(x: expanded.midX * bounds.width - width / 2,
+                            y: expanded.midY * bounds.height - width / aspect / 2,
+                            width: width, height: width / aspect), in: bounds, aspect: aspect)
+    }
     static func crop(in bounds: CGRect, aspect: CGFloat, face: CGRect?, intensity: CGFloat) -> CGRect {
         guard bounds.width > 0, bounds.height > 0, aspect > 0 else { return .zero }
         let maxWidth = min(bounds.width, bounds.height * aspect)

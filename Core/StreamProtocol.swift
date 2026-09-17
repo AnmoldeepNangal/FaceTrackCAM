@@ -10,18 +10,34 @@ enum StreamProtocol {
     static let boundary = "facetrack-frame"
     static let maximumHeaderBytes = 8192
 
-    static func parse(_ data: Data, token: String) -> HTTPRequestResult {
+    static func parse(_ data: Data, token: String, remoteToken: String? = nil) -> HTTPRequestResult {
         guard data.count <= maximumHeaderBytes else { return .rejected(431) }
         guard let text = String(data: data, encoding: .utf8) else { return .rejected(400) }
         guard text.contains("\r\n\r\n") else { return .incomplete }
         let words = text.components(separatedBy: "\r\n")[0].split(separator: " ")
         guard words.count == 3, words[2] == "HTTP/1.1" || words[2] == "HTTP/1.0" else { return .rejected(400) }
-        guard words[0] == "GET" else { return .rejected(405) }
         guard words[1].hasPrefix("/"), !words[1].hasPrefix("//"),
               let url = URLComponents(string: "http://localhost" + words[1]) else { return .rejected(400) }
+        let remote = url.path.hasPrefix("/remote")
+        if url.path == "/remote", remoteToken != nil, words[0] == "GET" { return .route(url.path) }
+        if url.path == "/remote/control" {
+            guard words[0] == "POST" else { return .rejected(405) }
+        } else if words[0] != "GET" { return .rejected(405) }
         let tokens = url.queryItems?.filter { $0.name == "token" } ?? []
-        guard tokens.count == 1, tokens[0].value == token else { return .rejected(403) }
-        guard ["/stream.mjpg", "/view", "/status"].contains(url.path) else { return .rejected(404) }
+        guard let expected = remote ? remoteToken : token,
+              tokens.count == 1, tokens[0].value == expected else { return .rejected(403) }
+        guard ["/stream.mjpg", "/view", "/status", "/remote/state", "/remote/control"].contains(url.path) else { return .rejected(404) }
+        if url.path == "/remote/control" {
+            let lines = text.components(separatedBy: "\r\n\r\n")[0].components(separatedBy: "\r\n").dropFirst()
+            let lengths = lines.filter { $0.lowercased().hasPrefix("content-length:") }
+            guard lengths.count == 1, let length = Int(lengths[0].dropFirst(15).trimmingCharacters(in: .whitespaces)),
+                  length > 0, length <= 4096,
+                  lines.contains(where: { $0.lowercased() == "content-type: application/json" }),
+                  !lines.contains(where: { $0.lowercased().hasPrefix("transfer-encoding:") }) else { return .rejected(400) }
+            guard let separator = data.range(of: Data("\r\n\r\n".utf8)) else { return .incomplete }
+            if data.count - separator.upperBound < length { return .incomplete }
+            if data.count - separator.upperBound != length { return .rejected(400) }
+        }
         return .route(url.path)
     }
 
@@ -38,3 +54,4 @@ enum StreamProtocol {
         Data("--\(boundary)\r\nContent-Type: image/jpeg\r\nContent-Length: \(jpeg.count)\r\n\r\n".utf8) + jpeg + Data("\r\n".utf8)
     }
 }
+
