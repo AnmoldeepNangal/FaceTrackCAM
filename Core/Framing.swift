@@ -8,10 +8,12 @@ enum Framing {
         var width = maxWidth
         var center = CGPoint(x: bounds.midX, y: bounds.midY)
         if let face {
-            width = min(maxWidth, max(maxWidth * 0.3, face.width * bounds.width / (0.35 * max(1, intensity))))
+            // Keep the whole upper body in frame. Lower intensity means more room;
+            // the default is deliberately wide enough for shoulders, chest, and headwear.
+            width = min(maxWidth, max(maxWidth * 0.62, face.width * bounds.width / (0.22 * max(0.8, intensity))))
             // Vision and Core Image both use a bottom-left origin.
             center = CGPoint(x: bounds.minX + face.midX * bounds.width,
-                             y: bounds.minY + (face.midY + face.height * 0.45) * bounds.height)
+                             y: bounds.minY + (face.midY + face.height * 0.18) * bounds.height)
         }
         return clamp(CGRect(x: center.x - width / 2, y: center.y - width / aspect / 2,
                             width: width, height: width / aspect), in: bounds, aspect: aspect)

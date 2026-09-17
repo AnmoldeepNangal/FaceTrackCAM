@@ -13,11 +13,23 @@ enum VideoFormat: String, CaseIterable, Identifiable {
     var size: CGSize { self == .landscape ? CGSize(width: 1280, height: 720) : CGSize(width: 720, height: 1280) }
 }
 
+enum VideoQuality: String, CaseIterable, Identifiable {
+    case standard = "Standard"
+    case high = "High"
+    case ultra = "Ultra"
+    var id: String { rawValue }
+    var size: CGSize {
+        switch self { case .standard: return CGSize(width: 960, height: 540); case .high: return CGSize(width: 1280, height: 720); case .ultra: return CGSize(width: 1920, height: 1080) }
+    }
+    var frameRate: Double { self == .ultra ? 24 : 30 }
+}
+
 struct ProcessingSettings {
     var tracking = true
     var intensity: CGFloat = 1.8
     var background: BackgroundMode = .off
     var format: VideoFormat = .landscape
+    var quality: VideoQuality = .high
     var mirrorStream = false
 }
 
@@ -74,7 +86,8 @@ final class FrameProcessor {
                 }
             }
         }
-        let size = settings.format.size
+        let base = settings.quality.size
+        let size = settings.format == .landscape ? base : CGSize(width: base.height, height: base.width)
         let aspect = size.width / size.height
         let target = Framing.crop(in: bounds, aspect: aspect, face: face, intensity: settings.intensity)
         crop = Framing.clamp(crop.map { Framing.interpolate($0, to: target, amount: CGFloat(1 - exp(-5 * dt))) } ?? target,
@@ -96,3 +109,4 @@ final class FrameProcessor {
         return scaled.cropped(to: rect).transformed(by: .init(translationX: -rect.minX, y: -rect.minY))
     }
 }
+

@@ -36,6 +36,7 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
     @Published var exposureLocked = false { didSet { configureExposure() } }
     @Published var error: String?
     @Published var dimmed = false { didSet { applyDimming() } }
+    @Published var oledSaverEnabled = false { didSet { if !oledSaverEnabled { dimmed = false } else if streaming { dimmed = true } } }
 
     let preview = PreviewFrames()
     private let session = AVCaptureSession()
@@ -289,7 +290,7 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         switch ProcessInfo.processInfo.thermalState {
         case .nominal: thermal = "Normal"
         case .fair: thermal = "Warm"
-        case .serious: thermal = "Hot · reduced FPS"
+        case .serious: thermal = "Hot Â· reduced FPS"
         case .critical:
             thermal = "Too hot"
             if streaming || starting { stopStream(); error = "Streaming stopped so the phone can cool down." }
@@ -298,6 +299,9 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
     }
 
     private func updateIdleTimer() {
+        if streaming && oledSaverEnabled {
+            dimmed = true
+        }
         if streaming {
             if previousIdleTimer == nil { previousIdleTimer = UIApplication.shared.isIdleTimerDisabled }
             UIApplication.shared.isIdleTimerDisabled = true

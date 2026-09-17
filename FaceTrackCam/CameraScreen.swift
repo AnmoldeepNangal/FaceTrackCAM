@@ -70,7 +70,7 @@ struct CameraScreen: View {
 
     private var topBar: some View {
         HStack(spacing: 12) {
-            Label(camera.battery.map { "\($0)%" } ?? "—", systemImage: "battery.100")
+            Label(camera.battery.map { "\($0)%" } ?? "â€”", systemImage: "battery.100")
                 .font(.caption.monospacedDigit())
             Spacer(minLength: 0)
             VStack(spacing: 3) {
@@ -80,8 +80,9 @@ struct CameraScreen: View {
                 Text(camera.thermal).font(.system(size: 10)).foregroundStyle(camera.thermal.hasPrefix("Hot") || camera.thermal == "Too hot" ? Color.orange : Color.secondary)
             }
             Spacer(minLength: 0)
-            Button { camera.dimmed = true } label: { Image(systemName: "moon").frame(width: 44, height: 44) }
-                .foregroundStyle(.white).disabled(!camera.streaming).accessibilityLabel("Dim screen while streaming")
+            Button { camera.oledSaverEnabled.toggle() } label: { Image(systemName: camera.oledSaverEnabled ? "moon.fill" : "moon").frame(width: 44, height: 44) }
+                .foregroundStyle(camera.oledSaverEnabled ? Color("mijick-background-yellow") : .white)
+                .disabled(!camera.streaming).accessibilityLabel(camera.oledSaverEnabled ? "Turn OLED saver off" : "Turn OLED saver on")
         }.padding(.horizontal, 20).padding(.vertical, 8)
             .background(Color("mijick-background-primary-80"))
     }
@@ -105,9 +106,9 @@ struct CameraScreen: View {
                 Spacer()
                 HStack(spacing: 6) {
                     Circle().fill(camera.streaming ? .red : .gray).frame(width: 6, height: 6)
-                    Text(camera.streaming ? (camera.viewers == 0 ? "LIVE · WAITING FOR OBS" : "LIVE · \(camera.viewers) CONNECTED") : "PREVIEW")
+                    Text(camera.streaming ? (camera.viewers == 0 ? "LIVE Â· WAITING FOR OBS" : "LIVE Â· \(camera.viewers) CONNECTED") : "PREVIEW")
                     Spacer()
-                    Text("\(Int(camera.settings.format.size.width))×\(Int(camera.settings.format.size.height)) · \(camera.fps) FPS")
+                    Text("\(Int(camera.settings.format.size.width))Ã—\(Int(camera.settings.format.size.height)) Â· \(camera.fps) FPS")
                 }
                 .font(.system(size: 10, weight: .medium).monospacedDigit())
                 .padding(12).background(.black.opacity(0.5))
@@ -137,7 +138,7 @@ struct CameraScreen: View {
                 MijickRoundButton(icon: "mijick-icon-change-camera", label: "Switch front and rear cameras") { camera.flipCamera() }
                     .disabled(!camera.ready)
             }
-            Text(camera.streaming ? "STOP STREAM" : camera.starting ? "STARTING…" : "START STREAM")
+            Text(camera.streaming ? "STOP STREAM" : camera.starting ? "STARTINGâ€¦" : "START STREAM")
                 .font(.system(size: 10, weight: .semibold)).tracking(2).foregroundStyle(.secondary)
         }.padding(.top, 16)
     }
@@ -145,8 +146,8 @@ struct CameraScreen: View {
     private var trackingPanel: some View {
         Section {
             Toggle("Follow my face", isOn: $camera.settings.tracking)
-            LabeledContent("Framing", value: String(format: "%.1f×", camera.settings.intensity))
-            Slider(value: $camera.settings.intensity, in: 1...3).accessibilityLabel("Framing intensity")
+            LabeledContent("Framing", value: String(format: "%.1fÃ—", camera.settings.intensity))
+            Slider(value: $camera.settings.intensity, in: 0.8...2.2).accessibilityLabel("Framing intensity")
                 .disabled(!camera.settings.tracking)
         } footer: { Text("Keeps the nearest previous subject in frame. If the face leaves, the view gently widens after one second.") }
     }
@@ -159,7 +160,7 @@ struct CameraScreen: View {
                 if camera.hasBackground { Text("Custom").tag(BackgroundMode.custom) }
             }.pickerStyle(.segmented)
             PhotosPicker(selection: $photo, matching: .images) {
-                Label(loadingPhoto ? "Loading photo…" : camera.hasBackground ? "Change background photo" : "Choose background photo", systemImage: "photo")
+                Label(loadingPhoto ? "Loading photoâ€¦" : camera.hasBackground ? "Change background photo" : "Choose background photo", systemImage: "photo")
             }.disabled(loadingPhoto)
             if camera.hasBackground { Button("Remove background", role: .destructive) { camera.clearBackground(); photo = nil } }
         } footer: { Text("The preview and OBS both include your background effect. Photos stay on your phone.") }
@@ -172,6 +173,8 @@ struct CameraScreen: View {
                     ForEach(camera.cameras) { Text($0.name).tag($0.id) }
                 }.disabled(!camera.ready)
                 Picker("Output", selection: $camera.settings.format) { ForEach(VideoFormat.allCases) { Text($0.rawValue).tag($0) } }
+                    .disabled(camera.streaming || camera.starting)
+                Picker("Video quality", selection: $camera.settings.quality) { ForEach(VideoQuality.allCases) { Text($0.rawValue).tag($0) } }
                     .disabled(camera.streaming || camera.starting)
                 Toggle("Mirror selfie preview", isOn: $camera.mirrorPreview)
                 Toggle("Mirror OBS output", isOn: $camera.settings.mirrorStream)
@@ -221,7 +224,7 @@ struct CameraScreen: View {
         Color.black.ignoresSafeArea().overlay {
             VStack(spacing: 12) {
                 Image(systemName: "moon").font(.title)
-                Text("Streaming · tap to wake").font(.caption)
+                Text("Streaming Â· tap to wake").font(.caption)
             }.foregroundStyle(.gray)
         }.contentShape(Rectangle()).onTapGesture { camera.dimmed = false }
             .accessibilityLabel("Screen dimmed. Double tap to wake.").accessibilityAddTraits(.isButton)
