@@ -13,7 +13,13 @@ final class StreamServerTests: XCTestCase {
             XCTAssertNil(status.error)
             if status.running && !didStart { didStart = true; started.fulfill() }
         }
-        server.start(token: "integration-token")
+        var remoteApplied = false
+        server.onRemoteState = { ["applied": remoteApplied] }
+        server.onRemoteCommand = { command in
+            guard command["action"] as? String == "wake" else { return "Invalid action" }
+            remoteApplied = true; return nil
+        }
+        server.start(token: "integration-token", remoteToken: "remote-secret")
         wait(for: [started], timeout: 10)
         defer {
             let stopped = expectation(description: "listener stopped")
@@ -33,6 +39,22 @@ final class StreamServerTests: XCTestCase {
                 done.fulfill()
             }.resume()
             wait(for: [done], timeout: 10)
+        }
+
+        for key in ["integration-token", "remote-secret"] {
+            let done = expectation(description: "remote command \(key)")
+            var request = URLRequest(url: URL(string: "http://127.0.0.1:8080/remote/control?token=\(key)")!)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = Data("{\"action\":\"wake\"}".utf8)
+            URLSession.shared.dataTask(with: request) { data, response, error in
+                XCTAssertNil(error)
+                XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, key == "remote-secret" ? 200 : 403)
+                if key == "remote-secret" { XCTAssertTrue(String(decoding: data ?? Data(), as: UTF8.self).contains("true")) }
+                done.fulfill()
+            }.resume()
+            wait(for: [done], timeout: 10)
+            XCTAssertEqual(remoteApplied, key == "remote-secret")
         }
 
         let gotFrame = expectation(description: "received multipart JPEG")

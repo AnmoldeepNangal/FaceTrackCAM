@@ -85,7 +85,7 @@ final class FrameProcessor {
                 let request = VNTrackObjectRequest(detectedObjectObservation: observation)
                 request.trackingLevel = .accurate
                 try sequence.perform([request], on: buffer)
-                if let result = request.results?.first, result.confidence > 0.45 {
+                if let result = request.results?.first as? VNDetectedObjectObservation, result.confidence > 0.45 {
                     lockedObservation = result; face = result.boundingBox; lastFaceTime = time
                 } else {
                     // Do not jump to a different person after the locked subject leaves.

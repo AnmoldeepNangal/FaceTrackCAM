@@ -4,7 +4,11 @@ $ErrorActionPreference = 'Stop'
 $mutex = New-Object System.Threading.Mutex($false, "Local\FacePullBridge-$LocalPort")
 if (-not $mutex.WaitOne(0)) { exit 0 }
 try {
-    Add-Type -Path (Join-Path $PSScriptRoot 'FacePullBridge.cs')
+    if ($PSVersionTable.PSVersion.Major -le 5) {
+        Add-Type -Path (Join-Path $PSScriptRoot 'FacePullBridge.cs') -ReferencedAssemblies 'System.dll','System.Core.dll','System.Xml.dll'
+    } else {
+        Add-Type -Path (Join-Path $PSScriptRoot 'FacePullBridge.cs')
+    }
     [FacePullBridge]::Run($LocalPort, $MuxPort, $DeviceID)
 } finally { $mutex.ReleaseMutex(); $mutex.Dispose() }
 

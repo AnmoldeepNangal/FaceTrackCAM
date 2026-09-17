@@ -283,6 +283,7 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
     }
 
     func removeBackground(_ asset: BackgroundAsset) {
+        backgroundRequest = UUID()
         if selectedBackgroundID == asset.id { clearBackground() }
         backgrounds.removeAll { $0.id == asset.id }
         try? FileManager.default.removeItem(at: asset.url)
@@ -318,7 +319,7 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
 
     private func persistPresets() {
         do { try CameraLibrary.save(presets, name: "presets.json") }
-        catch { error = "Preset could not be saved." }
+        catch { self.error = "Preset could not be saved." }
     }
 
     func applyPreset(_ preset: CameraPreset) {

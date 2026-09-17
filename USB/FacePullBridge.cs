@@ -62,7 +62,7 @@ public static class FacePullBridge {
             await Task.WhenAny(up, down); phone.Close(); obs.Close();
             try { await Task.WhenAll(up, down); } catch { }
         } catch {
-            try { var response = Encoding.ASCII.GetBytes("HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nRetry-After: 2\r\nConnection: close\r\n\r\n"); await obs.GetStream().WriteAsync(response, 0, response.Length); } catch { }
+            try { obs.SendTimeout = 2000; var response = Encoding.ASCII.GetBytes("HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nRetry-After: 2\r\nConnection: close\r\n\r\n"); obs.GetStream().Write(response, 0, response.Length); } catch { }
         } finally { if (phone != null) phone.Close(); obs.Close(); Slots.Release(); }
     }
     public static void Run(int localPort, int muxPort, string serial) {
