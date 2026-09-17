@@ -63,11 +63,13 @@ final class H264Encoder {
     private func createSession() -> Bool {
         let width = Int32(size.width), height = Int32(size.height)
         guard width > 0, height > 0 else { return false }
-        let spec: CFDictionary
+        let spec: CFDictionary?
         if #available(iOS 17.4, *) {
             spec = [kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder: kCFBooleanTrue] as CFDictionary
         } else {
-            spec = [kVTVideoEncoderSpecification_EnableHardwareAcceleratedVideoEncoder: kCFBooleanTrue] as CFDictionary
+            // The explicit hardware-selection keys were introduced in iOS 17.4.
+            // VideoToolbox chooses the encoder on older supported releases.
+            spec = nil
         }
         let attributes: [CFString: Any] = [
             kCVPixelBufferPixelFormatTypeKey: kCVPixelFormatType_32BGRA,
