@@ -43,7 +43,7 @@ struct ProcessedPreview: UIViewRepresentable {
             if mirrored { image = image.transformed(by: .init(a: -1, b: 0, c: 0, d: 1, tx: image.extent.width, ty: 0)) }
             let size = view.drawableSize
             guard size.width > 0, size.height > 0 else { return }
-            let scale = min(size.width / image.extent.width, size.height / image.extent.height)
+            let scale = max(size.width / image.extent.width, size.height / image.extent.height)
             image = image.transformed(by: .init(scaleX: scale, y: scale))
             image = image.transformed(by: .init(translationX: (size.width - image.extent.width) / 2, y: (size.height - image.extent.height) / 2))
             let bounds = CGRect(origin: .zero, size: size)
@@ -53,3 +53,4 @@ struct ProcessedPreview: UIViewRepresentable {
         }
     }
 }
+

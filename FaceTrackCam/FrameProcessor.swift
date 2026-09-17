@@ -31,6 +31,10 @@ struct ProcessingSettings {
     var format: VideoFormat = .landscape
     var quality: VideoQuality = .high
     var mirrorStream = false
+    var outputSize: CGSize {
+        let base = quality.size
+        return format == .landscape ? base : CGSize(width: base.height, height: base.width)
+    }
 }
 
 // All state is owned by the camera's serial processing queue.
@@ -86,8 +90,7 @@ final class FrameProcessor {
                 }
             }
         }
-        let base = settings.quality.size
-        let size = settings.format == .landscape ? base : CGSize(width: base.height, height: base.width)
+        let size = settings.outputSize
         let aspect = size.width / size.height
         let target = Framing.crop(in: bounds, aspect: aspect, face: face, intensity: settings.intensity)
         crop = Framing.clamp(crop.map { Framing.interpolate($0, to: target, amount: CGFloat(1 - exp(-5 * dt))) } ?? target,

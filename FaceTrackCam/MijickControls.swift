@@ -1,5 +1,5 @@
 // Adapted from Mijick/Camera at 0f02348fcc8fbbc9224c7fbf444f182dc25d0b40.
-// Copyright ©2024 Mijick. Original author: Tomasz Kurylik.
+// Copyright Â©2024 Mijick. Original author: Tomasz Kurylik.
 // Apache-2.0; see ThirdParty/Mijick-LICENSE and NOTICE.md.
 // Modified: streaming state/actions replace photo and movie capture.
 import SwiftUI
@@ -41,7 +41,9 @@ struct MijickRoundButton: View {
                 .frame(width: 26, height: 26)
                 .foregroundStyle(active ? Color("mijick-background-yellow") : .white)
                 .frame(width: 52, height: 52)
-                .background(Color("mijick-background-secondary"), in: Circle())
+                .background(.ultraThinMaterial, in: Circle())
+                .overlay(Circle().stroke(.white.opacity(0.18), lineWidth: 0.7))
         }.buttonStyle(MijickButtonScaleStyle()).accessibilityLabel(label)
     }
 }
+

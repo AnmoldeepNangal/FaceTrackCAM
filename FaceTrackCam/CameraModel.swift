@@ -36,7 +36,7 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
     @Published var exposureLocked = false { didSet { configureExposure() } }
     @Published var error: String?
     @Published var dimmed = false { didSet { applyDimming() } }
-    @Published var oledSaverEnabled = false { didSet { if !oledSaverEnabled { dimmed = false } else if streaming { dimmed = true } } }
+    @Published var oledSaverEnabled = false { didSet { dimmed = oledSaverEnabled } }
 
     let preview = PreviewFrames()
     private let session = AVCaptureSession()

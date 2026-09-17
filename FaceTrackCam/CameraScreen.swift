@@ -82,7 +82,7 @@ struct CameraScreen: View {
             Spacer(minLength: 0)
             Button { camera.oledSaverEnabled.toggle() } label: { Image(systemName: camera.oledSaverEnabled ? "moon.fill" : "moon").frame(width: 44, height: 44) }
                 .foregroundStyle(camera.oledSaverEnabled ? Color("mijick-background-yellow") : .white)
-                .disabled(!camera.streaming).accessibilityLabel(camera.oledSaverEnabled ? "Turn OLED saver off" : "Turn OLED saver on")
+                .accessibilityLabel(camera.oledSaverEnabled ? "Turn OLED saver off" : "Turn OLED saver on")
         }.padding(.horizontal, 20).padding(.top, 12).padding(.bottom, 10)
             .background(Color("mijick-background-primary-80").opacity(0.88))
     }
@@ -108,7 +108,7 @@ struct CameraScreen: View {
                     Circle().fill(camera.streaming ? .red : .gray).frame(width: 6, height: 6)
                     Text(camera.streaming ? (camera.viewers == 0 ? "LIVE Â· WAITING FOR OBS" : "LIVE Â· \(camera.viewers) CONNECTED") : "PREVIEW")
                     Spacer()
-                    Text("\(Int(camera.settings.format.size.width))Ã—\(Int(camera.settings.format.size.height)) Â· \(camera.fps) FPS")
+                    Text("\(Int(camera.settings.outputSize.width))Ã—\(Int(camera.settings.outputSize.height)) Â· \(camera.fps) FPS")
                 }
                 .font(.system(size: 10, weight: .medium).monospacedDigit())
                 .padding(.horizontal, 12).padding(.vertical, 10)
@@ -129,6 +129,10 @@ struct CameraScreen: View {
                     }.foregroundStyle(tool == .tracking && camera.settings.tracking ? Color("mijick-background-yellow") : .white)
                 }
             }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(.ultraThinMaterial, in: Capsule())
+            .overlay(Capsule().stroke(.white.opacity(0.18), lineWidth: 0.7))
             HStack {
                 MijickRoundButton(icon: "mijick-icon-light", active: camera.torch, label: "Toggle torch") { camera.toggleTorch() }
                     .disabled(!camera.ready || !camera.hasTorch).opacity(camera.hasTorch ? 1 : 0.3)
@@ -142,10 +146,10 @@ struct CameraScreen: View {
             Text(camera.streaming ? "STOP STREAM" : camera.starting ? "STARTINGâ€¦" : "START STREAM")
                 .font(.system(size: 10, weight: .semibold)).tracking(2).foregroundStyle(.secondary)
         }
-        .padding(.top, 12)
-        .padding(.bottom, 28)
-        .padding(.horizontal, 32)
-        .background(Color("mijick-background-primary-80").opacity(0.9))
+        .padding(.top, 10)
+        .padding(.bottom, 26)
+        .padding(.horizontal, 24)
+        .background(.clear)
     }
 
     private var trackingPanel: some View {
@@ -212,7 +216,7 @@ struct CameraScreen: View {
             }
             Section {
                 Text("URLs change whenever streaming restarts. Copy the new URL into OBS. A Browser Source can use the same URL with /view instead of /stream.mjpg.")
-                Text("The phone must stay in this app while streaming. The moon button dims the screen without locking it.")
+                Text("The phone must stay in this app while streaming. The moon button toggles OLED saver; tap the dimmed screen to wake it.")
             }
         }
     }
