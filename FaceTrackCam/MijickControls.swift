@@ -3,6 +3,21 @@
 // Apache-2.0; see ThirdParty/Mijick-LICENSE and NOTICE.md.
 // Modified: streaming state/actions replace photo and movie capture.
 import SwiftUI
+import UIKit
+
+enum FaceTrackHaptics {
+    static func tap() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    static func selection() {
+        UISelectionFeedbackGenerator().selectionChanged()
+    }
+
+    static func snap() {
+        UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+    }
+}
 
 struct MijickButtonScaleStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
@@ -15,7 +30,10 @@ struct StreamButton: View {
     let starting: Bool
     let action: () -> Void
     var body: some View {
-        Button(action: action) {
+        Button {
+            FaceTrackHaptics.tap()
+            action()
+        } label: {
             ZStack {
                 RoundedRectangle(cornerRadius: active ? 6 : 36, style: .continuous)
                     .fill(Color("mijick-background-red"))
@@ -37,7 +55,10 @@ struct MijickRoundButton: View {
     var rotation: Angle = .zero
     let action: () -> Void
     var body: some View {
-        Button(action: action) {
+        Button {
+            FaceTrackHaptics.tap()
+            action()
+        } label: {
             Image(icon).resizable().renderingMode(.template)
                 .frame(width: 26, height: 26)
                 .rotationEffect(rotation)

@@ -34,6 +34,8 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
     @Published private(set) var torch = false
     @Published var exposure: Float = 0 { didSet { configureExposure() } }
     @Published var exposureLocked = false { didSet { configureExposure() } }
+    @Published var whiteBalanceTemperature: Float = 4500 { didSet { configureWhiteBalance() } }
+    @Published var whiteBalanceLocked = false { didSet { configureWhiteBalance() } }
     @Published var error: String?
     @Published var dimmed = false { didSet { applyDimming() } }
     @Published var oledSaverEnabled = false { didSet { dimmed = oledSaverEnabled } }
@@ -180,6 +182,7 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
                 if candidate.hasTorch { candidate.torchMode = .off }
                 candidate.unlockForConfiguration()
                 self.applyExposure(bias: bias, locked: locked)
+                self.applyWhiteBalance(temperature: self.whiteBalanceTemperature, locked: self.whiteBalanceLocked)
                 self.processor.reset(); self.preview.put(nil)
                 if !self.session.isRunning { self.session.startRunning() }
                 let running = self.session.isRunning
@@ -235,6 +238,31 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
             if device.isExposureModeSupported(mode) { device.exposureMode = mode }
             device.setExposureTargetBias(max(device.minExposureTargetBias, min(device.maxExposureTargetBias, bias)))
         } catch { report("Exposure could not be changed: \(error.localizedDescription)") }
+    }
+
+    private func configureWhiteBalance() {
+        let temperature = whiteBalanceTemperature
+        let locked = whiteBalanceLocked
+        captureQueue.async { self.applyWhiteBalance(temperature: temperature, locked: locked) }
+    }
+
+    private func applyWhiteBalance(temperature: Float, locked: Bool) {
+        guard let device else { return }
+        do {
+            try device.lockForConfiguration(); defer { device.unlockForConfiguration() }
+            guard device.isWhiteBalanceModeSupported(.locked) else { return }
+            if !locked, device.isWhiteBalanceModeSupported(.continuousAutoWhiteBalance) {
+                device.whiteBalanceMode = .continuousAutoWhiteBalance
+                return
+            }
+            let values = AVCaptureDevice.WhiteBalanceTemperatureAndTintValues(temperature: temperature, tint: 0)
+            var gains = device.deviceWhiteBalanceGains(for: values)
+            let maxGain = device.maxWhiteBalanceGain
+            gains.redGain = min(max(gains.redGain, 1), maxGain)
+            gains.greenGain = min(max(gains.greenGain, 1), maxGain)
+            gains.blueGain = min(max(gains.blueGain, 1), maxGain)
+            device.setWhiteBalanceModeLocked(with: gains)
+        } catch { report("White balance could not be changed: \(error.localizedDescription)") }
     }
 
     func toggleTorch() {

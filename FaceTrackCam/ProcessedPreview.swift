@@ -43,6 +43,12 @@ struct ProcessedPreview: UIViewRepresentable {
             if mirrored { image = image.transformed(by: .init(a: -1, b: 0, c: 0, d: 1, tx: image.extent.width, ty: 0)) }
             let size = view.drawableSize
             guard size.width > 0, size.height > 0 else { return }
+            // The camera pipeline stays landscape for OBS. Rotate only the local
+            // preview when the portrait-locked UI is taller than it is wide so a
+            // horizontal sensor frame is shown in full instead of being cropped.
+            if size.height > size.width, image.extent.width > image.extent.height {
+                image = image.oriented(.right)
+            }
             let scale = max(size.width / image.extent.width, size.height / image.extent.height)
             image = image.transformed(by: .init(scaleX: scale, y: scale))
             image = image.transformed(by: .init(translationX: (size.width - image.extent.width) / 2, y: (size.height - image.extent.height) / 2))
