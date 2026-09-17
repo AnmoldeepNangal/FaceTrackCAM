@@ -1,0 +1,47 @@
+// Adapted from Mijick/Camera at 0f02348fcc8fbbc9224c7fbf444f182dc25d0b40.
+// Copyright ©2024 Mijick. Original author: Tomasz Kurylik.
+// Apache-2.0; see ThirdParty/Mijick-LICENSE and NOTICE.md.
+// Modified: streaming state/actions replace photo and movie capture.
+import SwiftUI
+
+struct MijickButtonScaleStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.scaleEffect(configuration.isPressed ? 0.96 : 1)
+    }
+}
+
+struct StreamButton: View {
+    let active: Bool
+    let starting: Bool
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                RoundedRectangle(cornerRadius: active ? 6 : 36, style: .continuous)
+                    .fill(Color("mijick-background-red"))
+                    .padding(active ? 20 : 4)
+                Circle().stroke(Color("mijick-background-inverted"), lineWidth: 2.5)
+                if starting { ProgressView().tint(.white) }
+            }.frame(width: 72, height: 72)
+        }
+        .buttonStyle(MijickButtonScaleStyle())
+        .accessibilityLabel(active || starting ? "Stop streaming" : "Start streaming")
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: active)
+    }
+}
+
+struct MijickRoundButton: View {
+    let icon: String
+    var active = false
+    let label: String
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            Image(icon).resizable().renderingMode(.template)
+                .frame(width: 26, height: 26)
+                .foregroundStyle(active ? Color("mijick-background-yellow") : .white)
+                .frame(width: 52, height: 52)
+                .background(Color("mijick-background-secondary"), in: Circle())
+        }.buttonStyle(MijickButtonScaleStyle()).accessibilityLabel(label)
+    }
+}

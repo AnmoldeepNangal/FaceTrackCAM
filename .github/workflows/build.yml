@@ -1,30 +1,46 @@
-name: Build iOS IPA
-on: [push, workflow_dispatch]
-
+name: Build and test FaceTrackCam
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: camera-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   build:
-    runs-on: macos-latest
+    runs-on: macos-15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
-      
+      - name: Test framing and stream protocol
+        run: swift test
       - name: Install XcodeGen
         run: brew install xcodegen
-        
-      - name: Generate Project
+      - name: Generate project
         run: xcodegen generate
-        
-      - name: Build App
+      - name: Build iPhone app
         run: |
-          xcodebuild clean build -project FaceTrackCam.xcodeproj -scheme FaceTrackCam -sdk iphoneos -configuration Release CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO -derivedDataPath derived_data
-          
-      - name: Package IPA
+          set -o pipefail
+          xcodebuild build -project FaceTrackCam.xcodeproj -scheme FaceTrackCam -sdk iphoneos -configuration Release CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO -derivedDataPath derived_data | tee build.log
+      - name: Build simulator app
         run: |
-          mkdir Payload
-          cp -r derived_data/Build/Products/Release-iphoneos/FaceTrackCam.app Payload/
-          zip -r FaceTrackCam.ipa Payload/
-          
-      - name: Upload IPA
-        uses: actions/upload-artifact@v4
+          set -o pipefail
+          xcodebuild build -project FaceTrackCam.xcodeproj -scheme FaceTrackCam -sdk iphonesimulator -configuration Debug CODE_SIGNING_ALLOWED=NO -derivedDataPath simulator_data | tee simulator-build.log
+      - name: Package unsigned IPA
+        run: |
+          mkdir -p Payload
+          cp -R derived_data/Build/Products/Release-iphoneos/FaceTrackCam.app Payload/
+          ditto -c -k --keepParent Payload FaceTrackCam.ipa
+      - uses: actions/upload-artifact@v4
         with:
-          name: FaceTrackCam-App
+          name: FaceTrackCam-unsigned-IPA
           path: FaceTrackCam.ipa
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: build-logs
+          path: |
+            build.log
+            simulator-build.log
