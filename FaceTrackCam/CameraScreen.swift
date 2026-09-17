@@ -1,6 +1,5 @@
 import SwiftUI
 import PhotosUI
-import UIKit
 
 private enum ToolPanel: String, Identifiable, CaseIterable {
     case tracking = "Tracking", background = "Background", camera = "Camera", connection = "Connect"
@@ -17,18 +16,15 @@ struct CameraScreen: View {
     @State private var panel: ToolPanel?
     @State private var photo: PhotosPickerItem?
     @State private var loadingPhoto = false
-    @State private var buttonAngle: Angle = .zero
 
     var body: some View {
         ZStack {
             preview
             VStack(spacing: 0) { topBar; Spacer(minLength: 0); controls }
-                .rotationEffect(buttonAngle)
         }
         .background(Color.black).ignoresSafeArea().statusBarHidden()
         .tint(Color("mijick-background-yellow"))
-        .onAppear { camera.activate(); updateButtonAngle() }
-        .onReceive(NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)) { _ in updateButtonAngle() }
+        .onAppear { camera.activate() }
         .onChange(of: phase) { _, value in
             if value == .active { camera.activate() } else if value == .background { camera.deactivate() }
         }
@@ -149,12 +145,5 @@ struct CameraScreen: View {
 
     private var dimOverlay: some View { Color.black.ignoresSafeArea().contentShape(Rectangle()).onTapGesture { camera.dimmed = false }.accessibilityLabel("OLED saver active. Tap to wake.") }
 
-    private func updateButtonAngle() {
-        switch UIDevice.current.orientation {
-        case .landscapeRight: buttonAngle = .zero
-        case .landscapeLeft: buttonAngle = .degrees(180)
-        default: break
-        }
-    }
 }
 
