@@ -23,6 +23,8 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
     @Published private(set) var starting = false
     @Published private(set) var streaming = false
     @Published private(set) var viewers = 0
+    private var jpegViewers = 0
+    private var h264Viewers = 0
     @Published private(set) var streamStarted: Date?
     @Published private(set) var token = CameraLibrary.stableSecret("streamKey")
     let remoteKey = CameraLibrary.stableSecret("remoteKey")
@@ -62,6 +64,7 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
     private let processor = FrameProcessor()
     private let server = StreamServer()
     private let rtsp = H264RTSPServer()
+    let peer = PeerControl(role: .host)
     private let liveActivity = StreamLiveActivity()
     private let output = AVCaptureVideoDataOutput()
     private var device: AVCaptureDevice?
@@ -82,18 +85,22 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         super.init()
         server.onRemoteState = { [weak self] in self?.remoteState() ?? [:] }
         server.onRemoteCommand = { [weak self] command in self?.applyRemote(command) }
+        peer.onCommand = { [weak self] command in self?.applyRemote(command) }
         rtsp.onError = { [weak self] message in self?.error = message }
+        rtsp.onViewers = { [weak self] count in
+            guard let self else { return }
+            self.h264Viewers = count
+            self.updateViewers()
+        }
         server.onStatus = { [weak self] status in
             guard let self else { return }
             self.starting = false
             if status.running && !self.streaming {
                 self.streamStarted = Date()
             }
-            if self.connectionAlerts && self.streaming && status.running && self.viewers != status.clients {
-                UINotificationFeedbackGenerator().notificationOccurred(status.clients > self.viewers ? .success : .warning)
-            }
             self.streaming = status.running
-            self.viewers = status.clients
+            self.jpegViewers = status.clients
+            self.updateViewers()
             if !status.running { self.streamStarted = nil }
             self.oledState.setStreaming(status.running, now: ProcessInfo.processInfo.systemUptime)
             self.syncOLEDSaver()
@@ -103,7 +110,11 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         }
         UIDevice.current.isBatteryMonitoringEnabled = true
         UIDevice.current.beginGeneratingDeviceOrientationNotifications()
-        monitor = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in self?.updateMonitor() }
+        monitor = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            self.updateMonitor()
+            self.peer.publish(self.remoteState())
+        }
         observe(UIDevice.orientationDidChangeNotification, object: nil) { [weak self] _ in self?.updateOrientation() }
         observe(.AVCaptureSessionWasInterrupted, object: session) { [weak self] _ in
             self?.ready = false; self?.stopStream(); self?.error = "Camera interrupted. Return to the app to resume the preview."
@@ -446,6 +457,14 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
             if streaming || starting { stopStream(); error = "Streaming stopped so the phone can cool down." }
         @unknown default: thermal = "Unknown"
         }
+    }
+
+    private func updateViewers() {
+        let count = jpegViewers + h264Viewers
+        if connectionAlerts && streaming && count != viewers {
+            UINotificationFeedbackGenerator().notificationOccurred(count > viewers ? .success : .warning)
+        }
+        viewers = count
     }
 
     private func updateIdleTimer() {

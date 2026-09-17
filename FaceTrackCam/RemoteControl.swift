@@ -17,6 +17,9 @@ extension CameraModel {
         guard let action = command["action"] as? String else { return "Missing action" }
         let value = command["value"] as? String ?? ""
         switch action {
+        case "stream":
+            guard let on = command["value"] as? Bool else { return "Expected on/off" }
+            if on != (streaming || starting) { toggleStream() }
         case "lens": guard cameras.contains(where: { $0.id == value }) else { return "Unknown lens" }; switchCamera(value)
         case "quality":
             guard !streaming && !starting else { return "Stop streaming before changing quality" }

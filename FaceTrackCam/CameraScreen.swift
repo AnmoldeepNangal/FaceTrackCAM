@@ -71,6 +71,7 @@ struct CameraScreen: View {
     @State private var editingPreset: UUID?
     @State private var namePreset = false
     @AppStorage("framingGrid") private var showGrid = false
+    @AppStorage("appMode") private var appMode = "host"
 
     var body: some View {
         preview.ignoresSafeArea()
@@ -362,6 +363,12 @@ struct CameraScreen: View {
                     .onChange(of: camera.settings.mirrorStream) { _, _ in FaceTrackHaptics.tap() }
                 Toggle("Connection haptics", isOn: $camera.connectionAlerts).padding(8).liquidGlass(cornerRadius: 16)
                     .onChange(of: camera.connectionAlerts) { _, _ in FaceTrackHaptics.tap() }
+                LabeledContent("Remote pairing", value: camera.peer.pairingCode)
+                    .padding(12).liquidGlass(cornerRadius: 16)
+                Button { camera.stopStream(); appMode = "remote" } label: {
+                    Label("Use as Remote Control", systemImage: "iphone.gen3.radiowaves.left.and.right")
+                        .frame(maxWidth: .infinity, alignment: .leading).padding(12).liquidGlass(cornerRadius: 16)
+                }
                 Button { withAnimation(.spring()) { showPresets.toggle() } } label: {
                     Label("Presets", systemImage: "slider.horizontal.3").frame(maxWidth: .infinity, alignment: .leading).padding(12).liquidGlass(cornerRadius: 16)
                 }

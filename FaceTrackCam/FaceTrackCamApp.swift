@@ -2,5 +2,15 @@ import SwiftUI
 
 @main
 struct FaceTrackCamApp: App {
-    var body: some Scene { WindowGroup { CameraScreen().preferredColorScheme(.dark) } }
+    @AppStorage("appMode") private var mode = "host"
+
+    var body: some Scene {
+        WindowGroup {
+            Group {
+                if mode == "remote" { RemoteScreen() }
+                else { CameraScreen() }
+            }.preferredColorScheme(.dark)
+        }
+    }
 }
+

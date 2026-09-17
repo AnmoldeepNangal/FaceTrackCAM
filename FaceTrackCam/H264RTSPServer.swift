@@ -18,10 +18,12 @@ final class H264RTSPServer {
     }
 
     var onError: ((String) -> Void)?
+    var onViewers: ((Int) -> Void)?
     private let queue = DispatchQueue(label: "facepull.rtsp", qos: .userInitiated)
     private let encoder = H264Encoder()
     private var listener: NWListener?
     private var clients: [UUID: Client] = [:]
+    private var timer: DispatchSourceTimer?
     private var token = ""
     private var running = false
     private let ssrc = UInt32.random(in: 1...UInt32.max)
@@ -51,6 +53,10 @@ final class H264RTSPServer {
                 }
                 listener.newConnectionHandler = { [weak self] connection in self?.accept(connection) }
                 listener.start(queue: self.queue)
+                let timer = DispatchSource.makeTimerSource(queue: self.queue)
+                timer.schedule(deadline: .now() + 5, repeating: 5)
+                timer.setEventHandler { [weak self] in self?.expireClients() }
+                timer.resume(); self.timer = timer
             } catch { self.report("RTSP server could not start: \(error.localizedDescription)") }
         }
     }
@@ -67,8 +73,10 @@ final class H264RTSPServer {
         listener?.stateUpdateHandler = nil
         listener?.newConnectionHandler = nil
         listener?.cancel(); listener = nil
+        timer?.cancel(); timer = nil
         for client in clients.values { client.connection.cancel() }
         clients.removeAll()
+        reportViewers()
         encoder.stop()
     }
 
@@ -137,11 +145,13 @@ final class H264RTSPServer {
             reply(id, cseq: cseq, extra: "Transport: RTP/AVP/TCP;unicast;interleaved=0-1;ssrc=\(String(ssrc, radix: 16))\r\nSession: \(client.sessionID);timeout=60\r\n")
         case "PLAY":
             client.playing = true; client.awaitingKeyframe = true
+            reportViewers()
             reply(id, cseq: cseq, extra: "Session: \(client.sessionID)\r\nRTP-Info: url=\(uri)/trackID=0;seq=\(client.sequence)\r\n")
         case "GET_PARAMETER": reply(id, cseq: cseq, extra: "Session: \(client.sessionID)\r\n")
         case "TEARDOWN":
             reply(id, cseq: cseq, extra: "Session: \(client.sessionID)\r\n")
             client.playing = false
+            reportViewers()
         default: reply(id, cseq: cseq, status: "405 Method Not Allowed")
         }
     }
@@ -156,7 +166,8 @@ final class H264RTSPServer {
 
     private func send(_ frame: H264Encoder.Frame) {
         guard running else { return }
-        for (id, client) in clients where client.playing && !client.sending {
+        for (id, client) in clients where client.playing {
+            if client.sending { client.awaitingKeyframe = true; continue }
             if client.awaitingKeyframe && !frame.isKeyframe { continue }
             client.awaitingKeyframe = false
             var packet = Data()
@@ -177,6 +188,17 @@ final class H264RTSPServer {
         guard let client = clients.removeValue(forKey: id) else { return }
         client.connection.stateUpdateHandler = nil
         client.connection.cancel()
+        reportViewers()
+    }
+
+    private func expireClients() {
+        let expired = clients.filter { Date().timeIntervalSince($0.value.lastProgress) > 20 }.map(\.key)
+        expired.forEach(remove)
+    }
+
+    private func reportViewers() {
+        let count = clients.values.filter(\.playing).count
+        DispatchQueue.main.async { [weak self] in self?.onViewers?(count) }
     }
 
     private func report(_ message: String) {
