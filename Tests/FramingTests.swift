@@ -1,4 +1,5 @@
 import XCTest
+import CoreGraphics
 @testable import FaceTrackCore
 
 final class FramingTests: XCTestCase {
@@ -42,3 +43,4 @@ final class FramingTests: XCTestCase {
         XCTAssertEqual(Framing.interpolate(a, to: b, amount: -1), a)
     }
 }
+

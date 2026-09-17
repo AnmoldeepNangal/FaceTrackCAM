@@ -1,4 +1,5 @@
 import Foundation
+import CoreGraphics
 
 enum Framing {
     static func crop(in bounds: CGRect, aspect: CGFloat, face: CGRect?, intensity: CGFloat) -> CGRect {
@@ -38,3 +39,4 @@ enum Framing {
         }
     }
 }
+
