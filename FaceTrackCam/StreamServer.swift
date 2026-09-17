@@ -132,6 +132,8 @@ final class StreamServer {
             guard clients.values.filter({ $0.streaming }).count < 3 else {
                 reply(id, status: 503, type: "text/plain", body: Data("Three viewers are already connected.".utf8)); return
             }
+            // Reserve the slot before the asynchronous header send completes.
+            client.streaming = true
             client.sending = true
             client.connection.send(content: StreamProtocol.streamHeader, completion: .contentProcessed { [weak self, weak client] error in
                 guard let self, let client, self.clients[id] === client else { return }
@@ -186,3 +188,4 @@ final class StreamServer {
         DispatchQueue.main.async { [weak self] in self?.onStatus?(status) }
     }
 }
+

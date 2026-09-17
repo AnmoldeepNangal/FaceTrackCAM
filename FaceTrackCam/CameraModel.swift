@@ -141,6 +141,10 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         let bias = exposure
         let locked = exposureLocked
         captureQueue.async {
+            if self.device?.uniqueID == id && self.session.isRunning {
+                DispatchQueue.main.async { self.ready = self.desiredActive }
+                return
+            }
             guard let candidate = AVCaptureDevice(uniqueID: id) else { self.report("The selected lens is unavailable."); return }
             do {
                 let input = try AVCaptureDeviceInput(device: candidate)
@@ -266,6 +270,7 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
 
     func toggleStream() {
         if streaming || starting { stopStream(); return }
+        guard ProcessInfo.processInfo.thermalState != .critical else { error = "Let the phone cool down before starting a stream."; return }
         guard ready else { error = "Wait for the camera preview before starting."; return }
         token = UUID().uuidString.replacingOccurrences(of: "-", with: "")
         starting = true
@@ -352,3 +357,4 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         return nil
     }
 }
+

@@ -61,7 +61,7 @@ struct CameraScreen: View {
         .task(id: photo) {
             guard let selected = photo else { return }
             loadingPhoto = true
-            defer { loadingPhoto = false }
+            defer { if !Task.isCancelled { loadingPhoto = false } }
             do {
                 if let data = try await selected.loadTransferable(type: Data.self), !Task.isCancelled { camera.loadBackground(data) }
             } catch { if !Task.isCancelled { camera.error = "Photo could not be loaded: \(error.localizedDescription)" } }
@@ -227,3 +227,4 @@ struct CameraScreen: View {
             .accessibilityLabel("Screen dimmed. Double tap to wake.").accessibilityAddTraits(.isButton)
     }
 }
+
