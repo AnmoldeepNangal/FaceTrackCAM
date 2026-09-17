@@ -34,11 +34,13 @@ struct MijickRoundButton: View {
     let icon: String
     var active = false
     let label: String
+    var rotation: Angle = .zero
     let action: () -> Void
     var body: some View {
         Button(action: action) {
             Image(icon).resizable().renderingMode(.template)
                 .frame(width: 26, height: 26)
+                .rotationEffect(rotation)
                 .foregroundStyle(active ? Color("mijick-background-yellow") : .white)
                 .frame(width: 52, height: 52)
                 .background(.ultraThinMaterial, in: Circle())
