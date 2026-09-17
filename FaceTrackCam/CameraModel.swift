@@ -40,6 +40,8 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
     @Published var dimmed = false { didSet { applyDimming() } }
     @Published var oledSaverEnabled = false { didSet { dimmed = oledSaverEnabled } }
 
+    func wakeFromOLEDSaver() { dimmed = false }
+
     let preview = PreviewFrames()
     private let session = AVCaptureSession()
     private let captureQueue = DispatchQueue(label: "cam.capture", qos: .userInitiated)
@@ -64,7 +66,10 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         server.onStatus = { [weak self] status in
             guard let self else { return }
             self.starting = false
-            if status.running && !self.streaming { self.streamStarted = Date() }
+            if status.running && !self.streaming {
+                self.streamStarted = Date()
+                if self.oledSaverEnabled { self.dimmed = true }
+            }
             self.streaming = status.running
             self.viewers = status.clients
             if !status.running { self.streamStarted = nil; self.dimmed = false }
@@ -322,9 +327,6 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
     }
 
     private func updateIdleTimer() {
-        if streaming && oledSaverEnabled {
-            dimmed = true
-        }
         if streaming {
             if previousIdleTimer == nil { previousIdleTimer = UIApplication.shared.isIdleTimerDisabled }
             UIApplication.shared.isIdleTimerDisabled = true

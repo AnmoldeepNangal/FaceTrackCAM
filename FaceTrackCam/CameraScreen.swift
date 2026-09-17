@@ -51,8 +51,8 @@ private struct MagneticSlider: View {
                 Capsule().fill(.black.opacity(0.28)).frame(height: 4).padding(.horizontal, 20)
                 Capsule().fill(.white).frame(width: max(0, travel * fraction), height: 4).offset(x: 20)
                 Capsule().fill(.ultraThinMaterial)
-                    .overlay(LiquidGlassBackground(style: .systemUltraThinMaterial).clipShape(Capsule()))
-                    .overlay(Capsule().stroke(.white.opacity(0.7), lineWidth: 0.5))
+                    .environment(\.colorScheme, .dark)
+                    .overlay(Capsule().stroke(Color.white.opacity(0.4), lineWidth: 0.5))
                     .shadow(color: .black.opacity(0.25), radius: 4, y: 2)
                     .frame(width: 40, height: 24).offset(x: travel * fraction)
             }
@@ -339,7 +339,7 @@ struct CameraScreen: View {
     }
 
     private var dimOverlay: some View {
-        Color.black.ignoresSafeArea().contentShape(Rectangle()).onTapGesture { FaceTrackHaptics.tap(); camera.dimmed = false }
+        Color.black.ignoresSafeArea().contentShape(Rectangle()).onTapGesture { FaceTrackHaptics.tap(); camera.wakeFromOLEDSaver() }
             .accessibilityLabel("OLED saver active. Tap to wake.")
     }
 
