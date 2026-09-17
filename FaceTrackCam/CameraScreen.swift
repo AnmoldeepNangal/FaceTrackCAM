@@ -42,15 +42,12 @@ private struct MagneticSlider: View {
     let step: Float
 
     var body: some View {
-        GeometryReader { proxy in
-            ZStack {
-                Capsule().fill(.white.opacity(0.16)).frame(height: 4)
-                Circle().fill(.white.opacity(0.24)).frame(width: 20, height: 20).blur(radius: 5)
-                    .position(x: markerX(in: proxy.size.width), y: proxy.size.height / 2)
-                Slider(value: snappedBinding, in: range, step: step).tint(.white)
-            }
-        }
-        .frame(height: 30)
+        Slider(value: snappedBinding, in: range, step: step)
+            .tint(.white)
+            .padding(.horizontal, 10)
+            .frame(height: 42)
+            .background(LiquidGlassBackground().clipShape(Capsule()))
+            .overlay(Capsule().stroke(.white.opacity(0.18), lineWidth: 0.7))
     }
 
     private var snappedBinding: Binding<Float> {
@@ -63,10 +60,6 @@ private struct MagneticSlider: View {
         })
     }
 
-    private func markerX(in width: CGFloat) -> CGFloat {
-        let fraction = CGFloat((defaultValue - range.lowerBound) / (range.upperBound - range.lowerBound))
-        return max(10, min(width - 10, width * fraction))
-    }
 }
 
 struct CameraScreen: View {
@@ -141,34 +134,34 @@ struct CameraScreen: View {
     }
 
     private var controls: some View {
-        HStack(spacing: 8) {
-            ForEach(ToolPanel.allCases) { tool in
-                Button {
-                    FaceTrackHaptics.tap()
-                    withAnimation(.spring(response: 0.36, dampingFraction: 0.84)) { panel = panel == tool ? nil : tool }
-                } label: {
-                    Image(systemName: tool.icon).font(.system(size: 17, weight: .semibold)).rotationEffect(iconAngle)
-                        .frame(width: 54, height: 46)
+        VStack(spacing: 14) {
+            HStack(spacing: 8) {
+                ForEach(ToolPanel.allCases) { tool in
+                    Button {
+                        FaceTrackHaptics.tap()
+                        withAnimation(.spring(response: 0.36, dampingFraction: 0.84)) { panel = panel == tool ? nil : tool }
+                    } label: {
+                        Image(systemName: tool.icon).font(.system(size: 17, weight: .semibold)).rotationEffect(iconAngle)
+                            .frame(width: 54, height: 46)
+                    }
+                    .foregroundStyle(tool == .faceTrack && camera.settings.tracking ? Color("mijick-background-yellow") : .white)
+                    .glassCapsule()
+                    .accessibilityLabel(tool.rawValue)
                 }
-                .foregroundStyle(tool == .faceTrack && camera.settings.tracking ? Color("mijick-background-yellow") : .white)
-                .glassCapsule()
-                .accessibilityLabel(tool.rawValue)
             }
-        }
-        .padding(.horizontal, 16).padding(.bottom, 14)
-        .overlay(alignment: .bottom) {
             HStack {
-                MijickRoundButton(icon: "flashlight.on.fill", active: camera.torch, label: "Toggle torch", rotation: iconAngle) { camera.toggleTorch() }
+                MijickRoundButton(icon: "mijick-icon-light", active: camera.torch, label: "Toggle torch", rotation: iconAngle) { camera.toggleTorch() }
                     .disabled(!camera.ready || !camera.hasTorch).opacity(camera.hasTorch ? 1 : 0.3)
                 Spacer()
                 StreamButton(active: camera.streaming, starting: camera.starting) { camera.toggleStream() }
                     .disabled(!camera.ready && !camera.streaming && !camera.starting)
                 Spacer()
-                MijickRoundButton(icon: "camera.rotate", label: "Switch camera", rotation: iconAngle) { camera.flipCamera() }.disabled(!camera.ready)
+                MijickRoundButton(icon: "mijick-icon-change-camera", label: "Switch camera", rotation: iconAngle) { camera.flipCamera() }
+                    .disabled(!camera.ready)
             }
-            .padding(.horizontal, 24).padding(.bottom, 76)
+            .padding(.horizontal, 24)
         }
-        .padding(.bottom, 112)
+        .padding(.horizontal, 16).padding(.bottom, 26)
     }
 
     @ViewBuilder
@@ -189,7 +182,7 @@ struct CameraScreen: View {
                 ScrollView(.vertical, showsIndicators: false) { panelContent(panel) }
             }
         }
-        .padding(16).frame(maxWidth: .infinity).frame(maxHeight: panel == .settings ? 278 : 300)
+        .padding(12).frame(maxWidth: .infinity).frame(maxHeight: panel == .settings ? 204 : 224)
         .liquidGlass(cornerRadius: 28)
     }
 
@@ -209,15 +202,18 @@ struct CameraScreen: View {
             HStack {
                 Label("Face follow", systemImage: "viewfinder")
                 Spacer()
-                Button { FaceTrackHaptics.tap(); camera.settings.tracking.toggle() } label: {
-                    Image(systemName: camera.settings.tracking ? "checkmark" : "pause.fill").frame(width: 40, height: 36)
-                }
-                .foregroundStyle(camera.settings.tracking ? Color("mijick-background-yellow") : .white).background(.white.opacity(0.1), in: Capsule())
             }
             HStack(spacing: 10) {
-                Text("Frame").font(.subheadline)
+                Toggle("On", isOn: $camera.settings.tracking)
+                    .labelsHidden()
+                    .tint(Color("mijick-background-yellow"))
+                    .onChange(of: camera.settings.tracking) { _, _ in FaceTrackHaptics.tap() }
                 Slider(value: $camera.settings.intensity, in: 0.8...2.2, step: 0.1) { editing in if editing { FaceTrackHaptics.tap() } }
-                    .tint(Color("mijick-background-yellow")).onChange(of: camera.settings.intensity) { _, _ in FaceTrackHaptics.selection() }
+                    .tint(Color("mijick-background-yellow"))
+                    .padding(.horizontal, 10).frame(height: 42)
+                    .background(LiquidGlassBackground().clipShape(Capsule()))
+                    .overlay(Capsule().stroke(.white.opacity(0.18), lineWidth: 0.7))
+                    .onChange(of: camera.settings.intensity) { _, _ in FaceTrackHaptics.selection() }
                 Text(String(format: "%.1f×", camera.settings.intensity)).font(.caption.monospaced()).foregroundStyle(.secondary)
             }
             Text("Keeps face, shoulders, chest, and headwear in frame.").font(.caption).foregroundStyle(.secondary)
@@ -241,6 +237,7 @@ struct CameraScreen: View {
                     VStack(alignment: .leading, spacing: 8) {
                         if camera.hasBackground {
                             Button { FaceTrackHaptics.tap(); camera.settings.background = .custom } label: { Label("Use recent photo", systemImage: "checkmark.circle") }
+                            Button(role: .destructive) { FaceTrackHaptics.tap(); camera.clearBackground(); showRecentBackground = true } label: { Label("Clear recent", systemImage: "trash") }
                         } else { Text("No recent background yet.").font(.caption).foregroundStyle(.secondary) }
                         PhotosPicker(selection: $photo, matching: .images) {
                             Label(loadingPhoto ? "Loading…" : "Choose from Photos", systemImage: "photo.on.rectangle")
@@ -255,7 +252,11 @@ struct CameraScreen: View {
     }
 
     private func backgroundChoice(_ mode: BackgroundMode, _ title: String, _ icon: String) -> some View {
-        Button { FaceTrackHaptics.tap(); camera.settings.background = mode } label: {
+        Button {
+            FaceTrackHaptics.tap()
+            camera.settings.background = mode
+            if mode == .custom { showRecentBackground = true }
+        } label: {
             Label(title, systemImage: icon).font(.subheadline.weight(.medium)).frame(maxWidth: .infinity, minHeight: 42)
         }
         .foregroundStyle(camera.settings.background == mode ? Color("mijick-background-yellow") : .white)
@@ -263,27 +264,26 @@ struct CameraScreen: View {
     }
 
     private var exposurePanel: some View {
-        exposureLikePanel(title: "Auto exposure", icon: "sun.max", locked: camera.exposureLocked, lockAction: { camera.exposureLocked.toggle() }) {
+        exposureLikePanel(title: "Auto exposure", icon: "sun.max", locked: $camera.exposureLocked) {
             Text(String(format: "%+.1f", camera.exposure)).font(.caption.monospaced()).foregroundStyle(.secondary)
             MagneticSlider(value: $camera.exposure, range: -2...2, defaultValue: 0, step: 0.1)
         }
     }
 
     private var whiteBalancePanel: some View {
-        exposureLikePanel(title: "White balance", icon: "thermometer.sun", locked: camera.whiteBalanceLocked, lockAction: { camera.whiteBalanceLocked.toggle() }) {
+        exposureLikePanel(title: "White balance", icon: "thermometer.sun", locked: $camera.whiteBalanceLocked) {
             Text("\(Int(camera.whiteBalanceTemperature))K").font(.caption.monospaced()).foregroundStyle(.secondary)
             MagneticSlider(value: $camera.whiteBalanceTemperature, range: 2500...7500, defaultValue: 4500, step: 100)
         }
     }
 
-    private func exposureLikePanel<SliderContent: View>(title: String, icon: String, locked: Bool, lockAction: @escaping () -> Void, @ViewBuilder slider: () -> SliderContent) -> some View {
+    private func exposureLikePanel<SliderContent: View>(title: String, icon: String, locked: Binding<Bool>, @ViewBuilder slider: () -> SliderContent) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Button { FaceTrackHaptics.tap(); lockAction() } label: {
-                    Label(locked ? "On" : "Auto", systemImage: locked ? "lock.fill" : "lock.open")
-                        .font(.subheadline.weight(.semibold)).frame(width: 78, height: 42)
-                }
-                .foregroundStyle(locked ? Color("mijick-background-yellow") : .white).glassCapsule()
+                Toggle("On", isOn: locked)
+                    .labelsHidden()
+                    .tint(Color("mijick-background-yellow"))
+                    .onChange(of: locked.wrappedValue) { _, _ in FaceTrackHaptics.tap() }
                 HStack(spacing: 8) { Image(systemName: icon); slider() }
             }
             Text(title).font(.caption).foregroundStyle(.secondary)
