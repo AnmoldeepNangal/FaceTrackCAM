@@ -163,9 +163,9 @@ struct CameraScreen: View {
                     } label: {
                         Image(systemName: tool.icon).font(.system(size: 17, weight: .semibold)).rotationEffect(iconAngle)
                             .frame(width: 44, height: 44)
+                            .glassCapsule()
                     }
                     .foregroundStyle(panel == tool ? Color.white : Color.white.opacity(0.8))
-                    .glassCapsule()
                     .shadow(color: .white.opacity(panel == tool ? 0.3 : 0), radius: 8)
                     .accessibilityLabel(tool.rawValue)
                     .accessibilityAddTraits(panel == tool ? .isSelected : [])
@@ -261,7 +261,8 @@ struct CameraScreen: View {
             }
         } label: {
             Text(title).font(.subheadline.weight(.medium)).frame(maxWidth: .infinity, minHeight: 48)
-        }.foregroundStyle(camera.settings.background == mode ? Color.blue : .white).glassCapsule()
+                .glassCapsule()
+        }.foregroundStyle(camera.settings.background == mode ? Color.blue : .white)
     }
 
     private var framingGrid: some View {
