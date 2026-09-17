@@ -1,5 +1,5 @@
 // Adapted from Mijick/Camera at 0f02348fcc8fbbc9224c7fbf444f182dc25d0b40.
-// Copyright Â©2024 Mijick. Original author: Tomasz Kurylik.
+// Copyright ©2024 Mijick. Original author: Tomasz Kurylik.
 // Apache-2.0; see ThirdParty/Mijick-LICENSE and NOTICE.md.
 // Modified: streaming state/actions replace photo and movie capture.
 import SwiftUI

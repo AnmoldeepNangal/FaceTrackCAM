@@ -250,14 +250,7 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
     }
 
     private func updateOrientation() {
-        let newOrientation: AVCaptureVideoOrientation
-        switch UIDevice.current.orientation {
-        case .portrait: newOrientation = .portrait
-        case .portraitUpsideDown: newOrientation = .portraitUpsideDown
-        case .landscapeLeft: newOrientation = .landscapeRight
-        case .landscapeRight: newOrientation = .landscapeLeft
-        default: return
-        }
+        let newOrientation: AVCaptureVideoOrientation = .portrait
         captureQueue.async { self.orientation = newOrientation; self.applyOrientation(); self.processor.reset() }
     }
 
@@ -290,7 +283,7 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         switch ProcessInfo.processInfo.thermalState {
         case .nominal: thermal = "Normal"
         case .fair: thermal = "Warm"
-        case .serious: thermal = "Hot Â· reduced FPS"
+        case .serious: thermal = "Hot · reduced FPS"
         case .critical:
             thermal = "Too hot"
             if streaming || starting { stopStream(); error = "Streaming stopped so the phone can cool down." }
