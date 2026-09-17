@@ -45,6 +45,7 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
     private let captureQueue = DispatchQueue(label: "cam.capture", qos: .userInitiated)
     private let processor = FrameProcessor()
     private let server = StreamServer()
+    private let liveActivity = StreamLiveActivity()
     private let output = AVCaptureVideoDataOutput()
     private var device: AVCaptureDevice?
     private var desiredActive = false
@@ -67,6 +68,7 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
             self.streaming = status.running
             self.viewers = status.clients
             if !status.running { self.streamStarted = nil; self.dimmed = false }
+            self.liveActivity.setStreaming(status.running, since: self.streamStarted)
             if let error = status.error { self.error = error }
             self.updateIdleTimer()
         }

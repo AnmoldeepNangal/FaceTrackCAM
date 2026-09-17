@@ -4,7 +4,7 @@ import UIKit
 /// A live blur plus vibrancy layer. Unlike a translucent color, this samples the
 /// camera feed behind the control and keeps highlights legible as the feed changes.
 struct LiquidGlassBackground: UIViewRepresentable {
-    var style: UIBlurEffect.Style = .systemChromeMaterialDark
+    var style: UIBlurEffect.Style = .systemUltraThinMaterial
 
     func makeUIView(context: Context) -> UIView {
         let container = UIView(frame: .zero)
