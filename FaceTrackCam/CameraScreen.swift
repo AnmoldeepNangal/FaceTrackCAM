@@ -82,6 +82,7 @@ struct CameraScreen: View {
     @StateObject private var camera = CameraModel()
     @Environment(\.scenePhase) private var phase
     @State private var panel: ToolPanel?
+    @State private var focusedTool: ToolPanel?
     @State private var showConnection = false
     @State private var showRecentBackground = false
     @State private var photo: PhotosPickerItem?
@@ -114,7 +115,6 @@ struct CameraScreen: View {
         }
         .photosPicker(isPresented: $showPhotoPicker, selection: $photo, matching: .images)
 
-        .animation(.spring(response: 0.35, dampingFraction: 0.7), value: panel)
         .animation(.spring(response: 0.35, dampingFraction: 0.7), value: showRecentBackground)
         .animation(.easeInOut(duration: 0.25), value: camera.streaming)
         .alert("FacePull", isPresented: Binding(get: { camera.error != nil }, set: { if !$0 { camera.error = nil } })) {
@@ -159,16 +159,26 @@ struct CameraScreen: View {
             HStack(spacing: 8) {
                 ForEach(ToolPanel.allCases) { tool in
                     Button {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) { panel = panel == tool ? nil : tool }
+                        withAnimation(.interpolatingSpring(stiffness: 300, damping: 20)) {
+                            if focusedTool == tool {
+                                panel = panel == tool ? nil : tool
+                            } else {
+                                focusedTool = tool
+                                panel = nil
+                            }
+                        }
                     } label: {
                         Image(systemName: tool.icon).font(.system(size: 17, weight: .semibold)).rotationEffect(iconAngle)
                             .frame(width: 44, height: 44)
                             .glassCapsule()
                     }
                     .foregroundStyle(panel == tool ? Color.white : Color.white.opacity(0.8))
+                    .scaleEffect(pillScale(for: tool))
+                    .zIndex(focusedTool == tool ? 1 : 0)
                     .shadow(color: .white.opacity(panel == tool ? 0.3 : 0), radius: 8)
                     .accessibilityLabel(tool.rawValue)
                     .accessibilityAddTraits(panel == tool ? .isSelected : [])
+                    .accessibilityHint(focusedTool == tool ? "Double tap to \(panel == tool ? "close" : "open") menu" : "Double tap to focus")
                 }
             }
             .padding(.bottom, 20)
@@ -188,6 +198,14 @@ struct CameraScreen: View {
     }
 
 
+
+    private func pillScale(for tool: ToolPanel) -> CGFloat {
+        guard let focusedTool else { return 1 }
+        if focusedTool == tool { return panel == tool ? 1.3 : 1.15 }
+        guard let focusedIndex = ToolPanel.allCases.firstIndex(of: focusedTool),
+              let index = ToolPanel.allCases.firstIndex(of: tool) else { return 1 }
+        return abs(focusedIndex - index) == 1 ? 1.05 : 1
+    }
 
     @ViewBuilder
     private func panelContent(_ panel: ToolPanel) -> some View {
