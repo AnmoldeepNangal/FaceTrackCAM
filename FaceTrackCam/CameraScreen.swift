@@ -1,11 +1,12 @@
 import SwiftUI
 import PhotosUI
+import UIKit
 
 private enum ToolPanel: String, Identifiable, CaseIterable {
-    case tracking = "Tracking", background = "Background", camera = "Camera", connection = "Connect"
+    case tracking = "Tracking", background = "Background", camera = "Camera"
     var id: String { rawValue }
     var icon: String {
-        switch self { case .tracking: return "viewfinder"; case .background: return "person.crop.rectangle"; case .camera: return "slider.horizontal.3"; case .connection: return "network" }
+        switch self { case .tracking: return "viewfinder"; case .background: return "person.crop.rectangle"; case .camera: return "slider.horizontal.3" }
     }
     static var allCases: [ToolPanel] { [.tracking, .background, .camera] }
 }
@@ -16,6 +17,7 @@ struct CameraScreen: View {
     @State private var panel: ToolPanel?
     @State private var photo: PhotosPickerItem?
     @State private var loadingPhoto = false
+    @State private var iconAngle: Angle = .zero
 
     var body: some View {
         ZStack {
@@ -24,19 +26,25 @@ struct CameraScreen: View {
         }
         .background(Color.black).ignoresSafeArea().statusBarHidden()
         .tint(Color("mijick-background-yellow"))
-        .onAppear { camera.activate() }
+        .onAppear { camera.activate(); updateIconAngle() }
+        .onReceive(NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)) { _ in updateIconAngle() }
         .onChange(of: phase) { _, value in
             if value == .active { camera.activate() } else if value == .background { camera.deactivate() }
         }
         .sheet(item: $panel) { panel in
             NavigationStack {
                 Form {
-                    switch panel { case .tracking: trackingPanel; case .background: backgroundPanel; case .camera: cameraPanel; case .connection: connectionPanel }
+                    switch panel { case .tracking: trackingPanel; case .background: backgroundPanel; case .camera: cameraPanel }
                 }
-                .scrollContentBackground(.hidden).background(.ultraThinMaterial)
+                .scrollContentBackground(.hidden)
+                .background(.ultraThinMaterial)
                 .navigationTitle(panel.rawValue).navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { self.panel = nil } } }
-            }.presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
+            }
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+            .presentationBackground(.ultraThinMaterial)
+            .presentationCornerRadius(28)
         }
         .alert("FaceTrackCam", isPresented: Binding(get: { camera.error != nil }, set: { if !$0 { camera.error = nil } })) {
             if camera.permissionDenied { Button("Open Settings") { if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) } } }
@@ -54,22 +62,20 @@ struct CameraScreen: View {
     private var topBar: some View {
         HStack(spacing: 12) {
             Image(systemName: camera.battery.map { $0 <= 20 ? "battery.25" : "battery.100" } ?? "battery.100")
-                .font(.system(size: 19, weight: .medium)).accessibilityLabel("Battery")
-            Spacer(minLength: 0)
-            Button { panel = .connection } label: {
-                Image(systemName: camera.streaming ? "network" : "network.slash")
-                    .font(.system(size: 19, weight: .semibold)).frame(width: 46, height: 40)
-                    .background(.ultraThinMaterial, in: Capsule())
-                    .overlay(Capsule().stroke(.white.opacity(0.16), lineWidth: 0.7))
-            }.accessibilityLabel("Connect")
+                .font(.system(size: 19, weight: .medium))
+                .rotationEffect(iconAngle)
+                .accessibilityLabel("Battery")
             Spacer(minLength: 0)
             Button { camera.oledSaverEnabled.toggle() } label: {
-                Image(systemName: camera.oledSaverEnabled ? "moon.fill" : "moon").frame(width: 44, height: 44)
+                Image(systemName: camera.oledSaverEnabled ? "moon.fill" : "moon")
+                    .frame(width: 44, height: 44)
+                    .rotationEffect(iconAngle)
             }.foregroundStyle(camera.oledSaverEnabled ? Color("mijick-background-yellow") : .white)
                 .accessibilityLabel(camera.oledSaverEnabled ? "Turn OLED saver off" : "Turn OLED saver on")
         }
-        .padding(.horizontal, 20).padding(.top, 12).padding(.bottom, 10)
-        .background(.ultraThinMaterial)
+        .padding(.horizontal, 20)
+        .padding(.top, 18)
+        .padding(.bottom, 10)
     }
 
     private var preview: some View {
@@ -82,24 +88,28 @@ struct CameraScreen: View {
 
     private var controls: some View {
         VStack(spacing: 14) {
-            HStack(spacing: 0) {
+            HStack(spacing: 10) {
                 ForEach(ToolPanel.allCases) { tool in
                     Button { panel = tool } label: {
-                        Image(systemName: tool.icon).font(.system(size: 18, weight: .semibold)).frame(maxWidth: .infinity, minHeight: 44)
-                    }.foregroundStyle(tool == .tracking && camera.settings.tracking ? Color("mijick-background-yellow") : .white).accessibilityLabel(tool.rawValue)
+                        Image(systemName: tool.icon)
+                            .font(.system(size: 18, weight: .semibold))
+                            .rotationEffect(iconAngle)
+                            .frame(width: 54, height: 46)
+                    }
+                    .foregroundStyle(tool == .tracking && camera.settings.tracking ? Color("mijick-background-yellow") : .white)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .overlay(Capsule().stroke(.white.opacity(0.18), lineWidth: 0.7))
+                    .accessibilityLabel(tool.rawValue)
                 }
             }
-            .padding(.horizontal, 8).padding(.vertical, 5)
-            .background(.ultraThinMaterial, in: Capsule())
-            .overlay(Capsule().stroke(.white.opacity(0.18), lineWidth: 0.7))
             HStack {
-                MijickRoundButton(icon: "mijick-icon-light", active: camera.torch, label: "Toggle torch") { camera.toggleTorch() }
+                MijickRoundButton(icon: "mijick-icon-light", active: camera.torch, label: "Toggle torch", rotation: iconAngle) { camera.toggleTorch() }
                     .disabled(!camera.ready || !camera.hasTorch).opacity(camera.hasTorch ? 1 : 0.3)
                 Spacer()
                 StreamButton(active: camera.streaming, starting: camera.starting) { camera.toggleStream() }
                     .disabled(!camera.ready && !camera.streaming && !camera.starting)
                 Spacer()
-                MijickRoundButton(icon: "mijick-icon-change-camera", label: "Switch camera") { camera.flipCamera() }.disabled(!camera.ready)
+                MijickRoundButton(icon: "mijick-icon-change-camera", label: "Switch camera", rotation: iconAngle) { camera.flipCamera() }.disabled(!camera.ready)
             }
         }.padding(.top, 10).padding(.bottom, 26).padding(.horizontal, 24)
     }
@@ -131,12 +141,13 @@ struct CameraScreen: View {
                 LabeledContent("Rate", value: camera.settings.quality.frameRate == 24 ? "24 fps" : "30 fps")
                 Toggle("Mirror selfie", isOn: $camera.mirrorPreview); Toggle("Mirror stream", isOn: $camera.settings.mirrorStream)
             }
+            Section("Connect") {
+                LabeledContent("Viewers", value: "\(camera.viewers)")
+                if let url = camera.wifiURL { urlRow(url) } else { Text("Join Wi-Fi to show the URL.").foregroundStyle(.secondary) }
+                urlRow(camera.usbURL)
+            }
             Section("Exposure") { Toggle("Lock", isOn: $camera.exposureLocked); Slider(value: $camera.exposure, in: -2...2, step: 0.1); Button("Reset") { camera.exposure = 0; camera.exposureLocked = false } }
         }
-    }
-
-    private var connectionPanel: some View {
-        Group { Section { LabeledContent("Viewers", value: "\(camera.viewers)") }; Section("Wi-Fi") { if let url = camera.wifiURL { urlRow(url) } else { Text("Join Wi-Fi to show the URL.") } }; Section("USB") { urlRow(camera.usbURL) } }
     }
 
     private func urlRow(_ url: String) -> some View {
@@ -144,6 +155,14 @@ struct CameraScreen: View {
     }
 
     private var dimOverlay: some View { Color.black.ignoresSafeArea().contentShape(Rectangle()).onTapGesture { camera.dimmed = false }.accessibilityLabel("OLED saver active. Tap to wake.") }
+
+    private func updateIconAngle() {
+        switch UIDevice.current.orientation {
+        case .landscapeLeft: iconAngle = .degrees(90)
+        case .landscapeRight: iconAngle = .degrees(-90)
+        default: iconAngle = .zero
+        }
+    }
 
 }
 
