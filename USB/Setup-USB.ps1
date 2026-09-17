@@ -11,7 +11,7 @@ if (-not $NoAutoStart) {
     $shell = New-Object -ComObject WScript.Shell
     $link = $shell.CreateShortcut((Join-Path $startup 'FacePull USB.lnk'))
     $link.TargetPath = (Get-Command powershell.exe).Source
-    $link.Arguments = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$(Join-Path $install 'Run-Bridge.ps1')`""
+    $link.Arguments = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$(Join-Path $install 'Start-USB.ps1')`""
     $link.WindowStyle = 7
     $link.Save()
 }

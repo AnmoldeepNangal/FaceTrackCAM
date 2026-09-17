@@ -49,11 +49,11 @@ public static class FacePullBridge {
             return selected;
         }
     }
-    static async Task Forward(TcpClient obs, int muxPort, string serial) {
+    static async Task Forward(TcpClient obs, int muxPort, int devicePort, string serial) {
         TcpClient phone = null;
         try {
             int id = Device(muxPort, serial); phone = OpenMux(muxPort);
-            int port = ((8080 & 255) << 8) | (8080 >> 8);
+            int port = ((devicePort & 255) << 8) | (devicePort >> 8);
             var xml = Exchange(phone.GetStream(), "<key>MessageType</key><string>Connect</string><key>DeviceID</key><integer>" + id + "</integer><key>PortNumber</key><integer>" + port + "</integer>");
             var result = Value(xml.SelectSingleNode("/plist/dict"), "Number");
             if (result == null || result.InnerText != "0") throw new IOException("Start FacePull streaming");
@@ -62,12 +62,12 @@ public static class FacePullBridge {
             await Task.WhenAny(up, down); phone.Close(); obs.Close();
             try { await Task.WhenAll(up, down); } catch { }
         } catch {
-            try { obs.SendTimeout = 2000; var response = Encoding.ASCII.GetBytes("HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nRetry-After: 2\r\nConnection: close\r\n\r\n"); obs.GetStream().Write(response, 0, response.Length); } catch { }
+            if (devicePort == 8080) try { obs.SendTimeout = 2000; var response = Encoding.ASCII.GetBytes("HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nRetry-After: 2\r\nConnection: close\r\n\r\n"); obs.GetStream().Write(response, 0, response.Length); } catch { }
         } finally { if (phone != null) phone.Close(); obs.Close(); Slots.Release(); }
     }
-    public static void Run(int localPort, int muxPort, string serial) {
+    public static void Run(int localPort, int muxPort, int devicePort, string serial) {
         var listener = new TcpListener(IPAddress.Loopback, localPort); listener.Start();
-        try { while (true) { var client = listener.AcceptTcpClient(); if (!Slots.Wait(0)) { client.Close(); continue; } Task.Run(() => Forward(client, muxPort, serial)); } }
+        try { while (true) { var client = listener.AcceptTcpClient(); if (!Slots.Wait(0)) { client.Close(); continue; } Task.Run(() => Forward(client, muxPort, devicePort, serial)); } }
         finally { listener.Stop(); }
     }
 }

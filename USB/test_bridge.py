@@ -95,7 +95,8 @@ try:
             return result
     assert get().endswith(b'OK')
     online.clear()
-    assert b'503 Service Unavailable' in get()
+    offline = get()
+    assert b'503 Service Unavailable' in offline, offline
     online.set()
     assert get().endswith(b'OK')
     assert not failures, failures
