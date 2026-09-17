@@ -59,12 +59,12 @@ struct MijickRoundButton: View {
             FaceTrackHaptics.tap()
             action()
         } label: {
-            Image(icon).resizable().renderingMode(.template)
-                .frame(width: 26, height: 26)
+            Image(systemName: icon)
+                .font(.system(size: 24, weight: .semibold))
                 .rotationEffect(rotation)
                 .foregroundStyle(active ? Color("mijick-background-yellow") : .white)
                 .frame(width: 52, height: 52)
-                .background(.ultraThinMaterial, in: Circle())
+                .background(LiquidGlassBackground().clipShape(Circle()))
                 .overlay(Circle().stroke(.white.opacity(0.18), lineWidth: 0.7))
         }.buttonStyle(MijickButtonScaleStyle()).accessibilityLabel(label)
     }
