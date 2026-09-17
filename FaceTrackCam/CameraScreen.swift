@@ -18,14 +18,14 @@ struct CameraScreen: View {
 
     var body: some View {
         GeometryReader { geometry in
-            VStack(spacing: 0) {
-                topBar
-                if geometry.size.width > geometry.size.height {
-                    HStack(spacing: 16) { preview; controls.frame(width: 240) }.padding(.horizontal, 16)
-                } else {
-                    preview
-                    controls.padding(.horizontal, 32).padding(.bottom, 24)
+            ZStack {
+                preview
+                VStack(spacing: 0) {
+                    topBar
+                    Spacer(minLength: 0)
+                    controls
                 }
+                .frame(width: geometry.size.width, height: geometry.size.height)
             }
             .background(Color("mijick-background-primary"))
             .overlay { if camera.dimmed { dimOverlay } }
@@ -83,8 +83,8 @@ struct CameraScreen: View {
             Button { camera.oledSaverEnabled.toggle() } label: { Image(systemName: camera.oledSaverEnabled ? "moon.fill" : "moon").frame(width: 44, height: 44) }
                 .foregroundStyle(camera.oledSaverEnabled ? Color("mijick-background-yellow") : .white)
                 .disabled(!camera.streaming).accessibilityLabel(camera.oledSaverEnabled ? "Turn OLED saver off" : "Turn OLED saver on")
-        }.padding(.horizontal, 20).padding(.vertical, 8)
-            .background(Color("mijick-background-primary-80"))
+        }.padding(.horizontal, 20).padding(.top, 12).padding(.bottom, 10)
+            .background(Color("mijick-background-primary-80").opacity(0.88))
     }
 
     private var preview: some View {
@@ -111,13 +111,14 @@ struct CameraScreen: View {
                     Text("\(Int(camera.settings.format.size.width))Ã—\(Int(camera.settings.format.size.height)) Â· \(camera.fps) FPS")
                 }
                 .font(.system(size: 10, weight: .medium).monospacedDigit())
-                .padding(12).background(.black.opacity(0.5))
+                .padding(.horizontal, 12).padding(.vertical, 10)
+                .background(Color("mijick-background-primary-80").opacity(0.8))
             }
         }.clipped().frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var controls: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: 18) {
             HStack(spacing: 0) {
                 ForEach(ToolPanel.allCases) { tool in
                     Button { panel = tool } label: {
@@ -140,7 +141,11 @@ struct CameraScreen: View {
             }
             Text(camera.streaming ? "STOP STREAM" : camera.starting ? "STARTINGâ€¦" : "START STREAM")
                 .font(.system(size: 10, weight: .semibold)).tracking(2).foregroundStyle(.secondary)
-        }.padding(.top, 16)
+        }
+        .padding(.top, 12)
+        .padding(.bottom, 28)
+        .padding(.horizontal, 32)
+        .background(Color("mijick-background-primary-80").opacity(0.9))
     }
 
     private var trackingPanel: some View {
