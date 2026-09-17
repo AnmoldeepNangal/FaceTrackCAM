@@ -19,9 +19,15 @@ enum FaceTrackHaptics {
     }
 }
 
-struct MijickButtonScaleStyle: ButtonStyle {
+struct LiquidGlassButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label.scaleEffect(configuration.isPressed ? 0.96 : 1)
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.92 : 1)
+            .opacity(configuration.isPressed ? 0.85 : 1)
+            .animation(.interactiveSpring(response: 0.35, dampingFraction: 0.7), value: configuration.isPressed)
+            .onChange(of: configuration.isPressed) { _, pressed in
+                if pressed { FaceTrackHaptics.tap() }
+            }
     }
 }
 
@@ -31,7 +37,6 @@ struct StreamButton: View {
     let action: () -> Void
     var body: some View {
         Button {
-            FaceTrackHaptics.tap()
             action()
         } label: {
             ZStack {
@@ -42,7 +47,7 @@ struct StreamButton: View {
                 if starting { ProgressView().tint(.white) }
             }.frame(width: 72, height: 72)
         }
-        .buttonStyle(MijickButtonScaleStyle())
+        .buttonStyle(LiquidGlassButtonStyle())
         .accessibilityLabel(active || starting ? "Stop streaming" : "Start streaming")
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: active)
     }
@@ -56,7 +61,6 @@ struct MijickRoundButton: View {
     let action: () -> Void
     var body: some View {
         Button {
-            FaceTrackHaptics.tap()
             action()
         } label: {
             Image(icon).resizable().renderingMode(.template)
@@ -66,7 +70,7 @@ struct MijickRoundButton: View {
                 .frame(width: 52, height: 52)
                 .background(LiquidGlassBackground().clipShape(Circle()))
                 .overlay(Circle().stroke(.white.opacity(0.18), lineWidth: 0.7))
-        }.buttonStyle(MijickButtonScaleStyle()).accessibilityLabel(label)
+        }.buttonStyle(LiquidGlassButtonStyle()).accessibilityLabel(label)
     }
 }
 

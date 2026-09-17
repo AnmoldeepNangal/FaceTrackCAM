@@ -49,7 +49,7 @@ private struct MagneticSlider: View {
             let fraction = CGFloat((value - range.lowerBound) / (range.upperBound - range.lowerBound))
             ZStack(alignment: .leading) {
                 Capsule().fill(.black.opacity(0.28)).frame(height: 4).padding(.horizontal, 20)
-                Capsule().fill(.blue).frame(width: max(0, travel * fraction), height: 4).offset(x: 20)
+                Capsule().fill(.white).frame(width: max(0, travel * fraction), height: 4).offset(x: 20)
                 Capsule().fill(.ultraThinMaterial)
                     .overlay(LiquidGlassBackground(style: .systemUltraThinMaterial).clipShape(Capsule()))
                     .overlay(Capsule().stroke(.white.opacity(0.7), lineWidth: 0.5))
@@ -97,14 +97,16 @@ struct CameraScreen: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(spacing: 8) {
                 if let panel {
-                    panelContent(panel).padding(.horizontal, 24)
+                    panelContent(panel).padding(.horizontal, panel == .settings ? 0 : 24)
                         .opacity(camera.streaming ? 0.55 : 1)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .transition(.asymmetric(insertion: .scale(scale: 0.95, anchor: .bottom).combined(with: .opacity), removal: .scale(scale: 0.95, anchor: .bottom).combined(with: .opacity)))
                 }
                 controls
             }.background(Color.clear)
         }
-        .statusBarHidden().fontDesign(.default).tint(.blue)
+        .statusBarHidden().fontDesign(.default).tint(.white)
+        .environment(\.colorScheme, .dark)
+        .buttonStyle(LiquidGlassButtonStyle())
         .onAppear { camera.activate(); updateIconAngle() }
         .onReceive(NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)) { _ in updateIconAngle() }
         .onChange(of: phase) { _, value in
@@ -112,8 +114,10 @@ struct CameraScreen: View {
         }
         .photosPicker(isPresented: $showPhotoPicker, selection: $photo, matching: .images)
 
-        .animation(.spring(response: 0.36, dampingFraction: 0.84), value: panel)
-        .alert("FaceTrackCam", isPresented: Binding(get: { camera.error != nil }, set: { if !$0 { camera.error = nil } })) {
+        .animation(.spring(response: 0.35, dampingFraction: 0.7), value: panel)
+        .animation(.spring(response: 0.35, dampingFraction: 0.7), value: showRecentBackground)
+        .animation(.easeInOut(duration: 0.25), value: camera.streaming)
+        .alert("FacePull", isPresented: Binding(get: { camera.error != nil }, set: { if !$0 { camera.error = nil } })) {
             if camera.permissionDenied { Button("Open Settings") { if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) } } }
             Button("OK", role: .cancel) { camera.error = nil }
         } message: { Text(camera.error ?? "") }
@@ -132,7 +136,7 @@ struct CameraScreen: View {
             Image(systemName: camera.battery.map { $0 <= 20 ? "battery.25" : "battery.100" } ?? "battery.100")
                 .font(.system(size: 19, weight: .medium)).rotationEffect(iconAngle).accessibilityLabel("Battery")
             Spacer(minLength: 0)
-            Button { FaceTrackHaptics.tap(); camera.oledSaverEnabled.toggle() } label: {
+            Button { camera.oledSaverEnabled.toggle() } label: {
                 Image(systemName: camera.oledSaverEnabled ? "moon.fill" : "moon").frame(width: 44, height: 44).rotationEffect(iconAngle)
             }
             .foregroundStyle(camera.oledSaverEnabled ? Color("mijick-background-yellow") : .white)
@@ -151,21 +155,23 @@ struct CameraScreen: View {
     }
 
     private var controls: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 0) {
             HStack(spacing: 8) {
                 ForEach(ToolPanel.allCases) { tool in
                     Button {
-                        FaceTrackHaptics.tap()
-                        withAnimation(.spring(response: 0.36, dampingFraction: 0.84)) { panel = panel == tool ? nil : tool }
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) { panel = panel == tool ? nil : tool }
                     } label: {
                         Image(systemName: tool.icon).font(.system(size: 17, weight: .semibold)).rotationEffect(iconAngle)
-                            .frame(width: 54, height: 46)
+                            .frame(width: 44, height: 44)
                     }
-                    .foregroundStyle(tool == .faceTrack && camera.settings.tracking ? Color("mijick-background-yellow") : .white)
+                    .foregroundStyle(panel == tool ? Color.white : Color.white.opacity(0.8))
                     .glassCapsule()
+                    .shadow(color: .white.opacity(panel == tool ? 0.3 : 0), radius: 8)
                     .accessibilityLabel(tool.rawValue)
+                    .accessibilityAddTraits(panel == tool ? .isSelected : [])
                 }
             }
+            .padding(.bottom, 20)
             HStack {
                 MijickRoundButton(icon: "mijick-icon-light", active: camera.torch, label: "Toggle torch", rotation: iconAngle) { camera.toggleTorch() }
                     .disabled(!camera.ready || !camera.hasTorch).opacity(camera.hasTorch ? 1 : 0.3)
@@ -233,12 +239,12 @@ struct CameraScreen: View {
             if showRecentBackground {
                 HStack(spacing: 8) {
                     if camera.hasBackground {
-                        Button("Recent") { FaceTrackHaptics.tap(); camera.settings.background = .custom }
+                        Button("Recent") { camera.settings.background = .custom }
                             .padding(8).glassCapsule()
-                        Button("Clear", role: .destructive) { FaceTrackHaptics.tap(); camera.clearBackground() }
+                        Button("Clear", role: .destructive) { camera.clearBackground() }
                             .padding(8).glassCapsule()
                     }
-                    Button("Photos") { FaceTrackHaptics.tap(); showPhotoPicker = true }
+                    Button("Photos") { showPhotoPicker = true }
                         .padding(8).glassCapsule().disabled(loadingPhoto)
                 }
             }
@@ -247,7 +253,6 @@ struct CameraScreen: View {
 
     private func backgroundChoice(_ mode: BackgroundMode, _ title: String) -> some View {
         Button {
-            FaceTrackHaptics.tap()
             if mode == .custom {
                 if camera.hasBackground { showRecentBackground.toggle() }
                 else { showPhotoPicker = true }
@@ -277,13 +282,13 @@ struct CameraScreen: View {
             VStack(spacing: 8) {
                 Menu {
                     ForEach(camera.cameras) { choice in
-                        Button(choice.name) { FaceTrackHaptics.tap(); camera.switchCamera(choice.id) }
+                        Button(choice.name) { camera.switchCamera(choice.id) }
                     }
                 } label: { settingRow("Lens", camera.cameras.first(where: { $0.id == camera.selectedCamera })?.name ?? "Front", "camera") }
                     .padding(8).liquidGlass(cornerRadius: 16)
                 Menu {
                     ForEach(VideoQuality.allCases) { quality in
-                        Button(quality.rawValue) { FaceTrackHaptics.tap(); camera.settings.quality = quality }
+                        Button(quality.rawValue) { camera.settings.quality = quality }
                     }
                 } label: { settingRow("Quality", camera.settings.quality.rawValue, "sparkles.tv") }
                     .padding(8).liquidGlass(cornerRadius: 16).disabled(camera.streaming || camera.starting)
@@ -294,14 +299,14 @@ struct CameraScreen: View {
                 Toggle("Mirror stream", isOn: $camera.settings.mirrorStream).padding(8).liquidGlass(cornerRadius: 16)
                     .onChange(of: camera.settings.mirrorStream) { _, _ in FaceTrackHaptics.tap() }
                 Button {
-                    FaceTrackHaptics.tap(); withAnimation(.spring()) { showConnection.toggle() }
+                    withAnimation(.spring()) { showConnection.toggle() }
                 } label: {
                     HStack { Text("Connect"); Spacer(); Image(systemName: "network").rotationEffect(iconAngle) }
                         .frame(minHeight: 32)
                 }.padding(8).liquidGlass(cornerRadius: 16)
                 if showConnection { connectionDetails }
             }.padding(.vertical, 8)
-        }.frame(height: 216).background(Color.clear)
+        }.frame(height: 216).padding(.horizontal, 16).background(Color.clear)
     }
 
 
@@ -309,7 +314,7 @@ struct CameraScreen: View {
     private func settingRow(_ title: String, _ value: String, _ icon: String) -> some View {
         HStack(spacing: 8) {
             Image(systemName: icon).rotationEffect(iconAngle)
-            VStack(alignment: .leading, spacing: 1) { Text(title).font(.caption).foregroundStyle(.secondary); Text(value).font(.subheadline.weight(.medium)) }
+            VStack(alignment: .leading, spacing: 1) { Text(title).font(.caption).foregroundStyle(.secondary); Text(value).font(.headline).fixedSize(horizontal: false, vertical: true) }
             Spacer()
             Image(systemName: "chevron.up.chevron.down").font(.caption).foregroundStyle(.secondary)
         }
@@ -328,7 +333,7 @@ struct CameraScreen: View {
         HStack(alignment: .top, spacing: 8) {
             VStack(alignment: .leading, spacing: 2) { Text(title).font(.caption).foregroundStyle(.secondary); Text(url).font(.caption2.monospaced()).lineLimit(2).textSelection(.enabled) }
             Spacer()
-            Button { FaceTrackHaptics.tap(); UIPasteboard.general.string = url } label: { Image(systemName: "doc.on.doc").frame(width: 34, height: 34) }.disabled(!camera.streaming)
+            Button { UIPasteboard.general.string = url } label: { Image(systemName: "doc.on.doc").frame(width: 34, height: 34) }.disabled(!camera.streaming)
         }.padding(8).liquidGlass(cornerRadius: 16)
     }
 

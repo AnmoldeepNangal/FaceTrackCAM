@@ -1,9 +1,1 @@
-{
-  "images" : [
-    { "filename" : "mijick-icon-change-camera.png", "idiom" : "iphone", "scale" : "2x", "size" : "60x60" },
-    { "filename" : "mijick-icon-change-camera.png", "idiom" : "iphone", "scale" : "3x", "size" : "60x60" },
-    { "filename" : "mijick-icon-change-camera.png", "idiom" : "ipad", "scale" : "2x", "size" : "76x76" }
-  ],
-  "info" : { "author" : "xcode", "version" : 1 }
-}
-
+{"images":[{"filename":"FacePull.png","idiom":"universal","platform":"ios","size":"1024x1024"}],"info":{"author":"xcode","version":1}}
