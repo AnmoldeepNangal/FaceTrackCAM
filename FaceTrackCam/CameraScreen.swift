@@ -391,8 +391,10 @@ struct CameraScreen: View {
     private var connectionDetails: some View {
         VStack(alignment: .leading, spacing: 8) {
             LabeledContent("Viewers", value: "\(camera.viewers)")
-            if let url = camera.wifiURL { compactURLRow("Wi‑Fi", url) }
-            compactURLRow("USB", camera.usbURL)
+            if let url = camera.wifiH264URL { compactURLRow("Wi‑Fi · H.264", url) }
+            compactURLRow("USB · H.264", camera.usbH264URL)
+            if let url = camera.wifiURL { compactURLRow("Wi‑Fi · compatibility", url) }
+            compactURLRow("USB · compatibility", camera.usbURL)
             if let host = camera.wifiAddress { compactURLRow("Remote · Wi-Fi", "http://\(host):8080/remote") }
             compactURLRow("Remote · USB", "http://127.0.0.1:18080/remote")
             compactURLRow("Remote password", camera.remoteKey)

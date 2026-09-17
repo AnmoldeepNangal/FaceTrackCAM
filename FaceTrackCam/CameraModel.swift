@@ -61,6 +61,7 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
     private let captureQueue = DispatchQueue(label: "cam.capture", qos: .userInitiated)
     private let processor = FrameProcessor()
     private let server = StreamServer()
+    private let rtsp = H264RTSPServer()
     private let liveActivity = StreamLiveActivity()
     private let output = AVCaptureVideoDataOutput()
     private var device: AVCaptureDevice?
@@ -81,6 +82,7 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         super.init()
         server.onRemoteState = { [weak self] in self?.remoteState() ?? [:] }
         server.onRemoteCommand = { [weak self] command in self?.applyRemote(command) }
+        rtsp.onError = { [weak self] message in self?.error = message }
         server.onStatus = { [weak self] status in
             guard let self else { return }
             self.starting = false
@@ -122,6 +124,7 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         oledTimer?.invalidate()
         observers.forEach(NotificationCenter.default.removeObserver)
         server.stop()
+        rtsp.stop()
         let session = session
         captureQueue.async { if session.isRunning { session.stopRunning() } }
     }
@@ -413,6 +416,7 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         guard ProcessInfo.processInfo.thermalState != .critical else { error = "Let the phone cool down before starting a stream."; return }
         guard ready else { error = "Wait for the camera preview before starting."; return }
         starting = true
+        rtsp.start(token: token, size: settings.outputSize, frameRate: settings.quality.frameRate)
         server.start(token: token, remoteToken: remoteKey)
     }
 
@@ -421,10 +425,13 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         oledState.setStreaming(false, now: ProcessInfo.processInfo.systemUptime)
         syncOLEDSaver()
         server.stop()
+        rtsp.stop()
     }
 
     var wifiURL: String? { wifiAddress.map { "http://\($0):8080/stream.mjpg?token=\(token)" } }
     var usbURL: String { "http://127.0.0.1:18080/stream.mjpg?token=\(token)" }
+    var wifiH264URL: String? { wifiAddress.map { "rtsp://\($0):8554/facepull?token=\(token)" } }
+    var usbH264URL: String { "rtsp://127.0.0.1:18554/facepull?token=\(token)" }
 
     private func updateMonitor() {
         let level = UIDevice.current.batteryLevel
@@ -485,6 +492,7 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
                 guard let cg = processor.context.createCGImage(image, from: image.extent) else { return }
                 let finished = CIImage(cgImage: cg)
                 preview.put(finished); server.offer(finished)
+                rtsp.offer(finished, time: CMSampleBufferGetPresentationTimeStamp(sampleBuffer))
                 statsFrames += 1
                 if time - statsTime >= 1 {
                     let value = statsTime == 0 ? 0 : Int((Double(statsFrames) / (time - statsTime)).rounded())
