@@ -68,8 +68,7 @@ struct MijickRoundButton: View {
                 .rotationEffect(rotation)
                 .foregroundStyle(active ? Color("mijick-background-yellow") : .white)
                 .frame(width: 52, height: 52)
-                .background(LiquidGlassBackground().clipShape(Circle()))
-                .overlay(Circle().stroke(.white.opacity(0.18), lineWidth: 0.7))
+                .facePullGlass(in: Circle())
         }.buttonStyle(LiquidGlassButtonStyle()).accessibilityLabel(label)
     }
 }

@@ -1,6 +1,19 @@
 import SwiftUI
 import UIKit
 
+extension View {
+    @ViewBuilder
+    func facePullGlass<S: Shape>(in shape: S, tint: Color = .clear) -> some View {
+        if #available(iOS 26.0, *) {
+            glassEffect(.regular.tint(tint).interactive(), in: shape)
+        } else {
+            background(.ultraThinMaterial, in: shape)
+                .overlay(shape.fill(tint).allowsHitTesting(false))
+                .overlay(shape.stroke(.white.opacity(0.2), lineWidth: 0.5).allowsHitTesting(false))
+        }
+    }
+}
+
 /// A live blur plus vibrancy layer. Unlike a translucent color, this samples the
 /// camera feed behind the control and keeps highlights legible as the feed changes.
 struct LiquidGlassBackground: UIViewRepresentable {

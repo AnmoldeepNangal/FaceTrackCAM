@@ -20,22 +20,15 @@ private enum ToolPanel: String, Identifiable, CaseIterable, Equatable {
 
 private extension View {
     func liquidGlass(cornerRadius: CGFloat = 26) -> some View {
-        background(LiquidGlassBackground().clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)))
-            .background(
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(LinearGradient(colors: [.white.opacity(0.1), .white.opacity(0.015)], startPoint: .topLeading, endPoint: .bottomTrailing))
-            )
-            .overlay(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous).stroke(.white.opacity(0.22), lineWidth: 0.8))
-            .shadow(color: .black.opacity(0.24), radius: 16, y: 8)
+        facePullGlass(in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
     }
 
-    func glassCapsule() -> some View {
-        background(LiquidGlassBackground().clipShape(Capsule()))
-            .overlay(Capsule().stroke(.white.opacity(0.2), lineWidth: 0.7))
+    func glassCapsule(tint: Color = .clear) -> some View {
+        facePullGlass(in: Capsule(), tint: tint)
     }
 }
 
-private struct MagneticSlider: View {
+private struct NativeMagneticSlider: View {
     @Binding var value: Float
     let range: ClosedRange<Float>
     let defaultValue: Float
@@ -44,22 +37,7 @@ private struct MagneticSlider: View {
     @State private var snapped = false
 
     var body: some View {
-        GeometryReader { geometry in
-            let travel = max(1, geometry.size.width - 40)
-            let fraction = CGFloat((value - range.lowerBound) / (range.upperBound - range.lowerBound))
-            ZStack(alignment: .leading) {
-                Capsule().fill(.black.opacity(0.28)).frame(height: 4).padding(.horizontal, 20)
-                Capsule().fill(.white).frame(width: max(0, travel * fraction), height: 4).offset(x: 20)
-                Capsule().fill(.ultraThinMaterial)
-                    .environment(\.colorScheme, .dark)
-                    .overlay(Capsule().stroke(Color.white.opacity(0.4), lineWidth: 0.5))
-                    .shadow(color: .black.opacity(0.25), radius: 4, y: 2)
-                    .frame(width: 40, height: 24).offset(x: travel * fraction)
-            }
-            .frame(height: 48).contentShape(Rectangle())
-            .gesture(DragGesture(minimumDistance: 0).onChanged { gesture in
-                let ratio = Float(min(1, max(0, (gesture.location.x - 20) / travel)))
-                let raw = range.lowerBound + ratio * (range.upperBound - range.lowerBound)
+        Slider(value: Binding(get: { value }, set: { raw in
                 let crossed = lastRaw.map { ($0 - defaultValue) * (raw - defaultValue) < 0 } ?? false
                 let near = abs(raw - defaultValue) < (range.upperBound - range.lowerBound) * 0.025
                 let shouldSnap = near || (crossed && !snapped)
@@ -67,14 +45,13 @@ private struct MagneticSlider: View {
                 let next = shouldSnap ? defaultValue : min(range.upperBound, max(range.lowerBound, (raw / step).rounded() * step))
                 if next != value && !shouldSnap { FaceTrackHaptics.selection() }
                 value = next; snapped = shouldSnap; lastRaw = raw
-            }.onEnded { _ in lastRaw = nil; snapped = false })
-        }
+        }), in: range, onEditingChanged: { editing in
+            if editing { FaceTrackHaptics.tap() }
+            else { lastRaw = nil; snapped = false }
+        })
+        .tint(.blue)
+        .environment(\.colorScheme, .dark)
         .frame(height: 48)
-        .accessibilityElement().accessibilityValue(String(format: "%.1f", value))
-        .accessibilityAdjustableAction { direction in
-            value = min(range.upperBound, max(range.lowerBound, value + (direction == .increment ? step : -step)))
-            FaceTrackHaptics.selection()
-        }
     }
 }
 
@@ -129,6 +106,7 @@ struct CameraScreen: View {
             } catch { if !Task.isCancelled { camera.error = "Photo could not be loaded." } }
         }
         .overlay { if camera.dimmed { dimOverlay } }
+        .persistentSystemOverlays(camera.dimmed ? .hidden : .automatic)
     }
 
     private var topBar: some View {
@@ -136,11 +114,19 @@ struct CameraScreen: View {
             Image(systemName: camera.battery.map { $0 <= 20 ? "battery.25" : "battery.100" } ?? "battery.100")
                 .font(.system(size: 19, weight: .medium)).rotationEffect(iconAngle).accessibilityLabel("Battery")
             Spacer(minLength: 0)
-            Button { camera.oledSaverEnabled.toggle() } label: {
+            Menu {
+                Picker("OLED saver", selection: $camera.oledSaverEnabled) {
+                    Text("Off").tag(false)
+                    Text("Auto · 30s").tag(true)
+                }
+            } label: {
                 Image(systemName: camera.oledSaverEnabled ? "moon.fill" : "moon").frame(width: 44, height: 44).rotationEffect(iconAngle)
+                    .glassCapsule()
             }
+            .onChange(of: camera.oledSaverEnabled) { _, _ in FaceTrackHaptics.tap() }
             .foregroundStyle(camera.oledSaverEnabled ? Color("mijick-background-yellow") : .white)
-            .accessibilityLabel(camera.oledSaverEnabled ? "Turn OLED saver off" : "Turn OLED saver on")
+            .accessibilityLabel("OLED saver")
+            .accessibilityValue(camera.oledSaverEnabled ? "Auto, 30 seconds" : "Off")
         }
         .padding(.horizontal, 24)
     }
@@ -170,10 +156,12 @@ struct CameraScreen: View {
                     } label: {
                         Image(systemName: tool.icon).font(.system(size: 17, weight: .semibold)).rotationEffect(iconAngle)
                             .frame(width: 44, height: 44)
-                            .glassCapsule()
+                            .glassCapsule(tint: panel == tool ? .black.opacity(0.35) : focusedTool == tool ? .white.opacity(0.45) : .clear)
+                            .scaleEffect(pillScale(for: tool))
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                     }
-                    .foregroundStyle(panel == tool ? Color.white : Color.white.opacity(0.8))
-                    .scaleEffect(pillScale(for: tool))
+                    .foregroundStyle(focusedTool == tool && panel != tool ? Color.black : Color.white)
                     .zIndex(focusedTool == tool ? 1 : 0)
                     .shadow(color: .white.opacity(panel == tool ? 0.3 : 0), radius: 8)
                     .accessibilityLabel(tool.rawValue)
@@ -202,9 +190,7 @@ struct CameraScreen: View {
     private func pillScale(for tool: ToolPanel) -> CGFloat {
         guard let focusedTool else { return 1 }
         if focusedTool == tool { return panel == tool ? 1.3 : 1.15 }
-        guard let focusedIndex = ToolPanel.allCases.firstIndex(of: focusedTool),
-              let index = ToolPanel.allCases.firstIndex(of: tool) else { return 1 }
-        return abs(focusedIndex - index) == 1 ? 1.05 : 1
+        return panel == nil ? 0.9 : 0.8
     }
 
     @ViewBuilder
@@ -242,7 +228,7 @@ struct CameraScreen: View {
         HStack(spacing: 16) {
             Toggle(label, isOn: enabled).labelsHidden().fixedSize()
                 .onChange(of: enabled.wrappedValue) { _, _ in FaceTrackHaptics.tap() }
-            MagneticSlider(value: value, range: range, defaultValue: center, step: step)
+            NativeMagneticSlider(value: value, range: range, defaultValue: center, step: step)
                 .accessibilityLabel(label + " adjustment")
         }.background(Color.clear)
     }

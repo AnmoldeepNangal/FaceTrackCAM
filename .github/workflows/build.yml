@@ -10,10 +10,17 @@ concurrency:
   cancel-in-progress: true
 jobs:
   build:
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+      - name: Select Xcode 26.6 and verify modern iOS SDK
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
+          xcodebuild -version
+          SDK_VERSION=$(xcrun --sdk iphoneos --show-sdk-version)
+          echo "iOS SDK: $SDK_VERSION"
+          test "${SDK_VERSION%%.*}" -ge 26
       - name: Test framing and stream protocol
         run: swift test
       - name: Install XcodeGen

@@ -37,10 +37,18 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
     @Published var whiteBalanceTemperature: Float = 4500 { didSet { configureWhiteBalance() } }
     @Published var whiteBalanceLocked = false { didSet { configureWhiteBalance() } }
     @Published var error: String?
-    @Published var dimmed = false { didSet { applyDimming() } }
-    @Published var oledSaverEnabled = false { didSet { dimmed = oledSaverEnabled } }
+    @Published private(set) var dimmed = false { didSet { applyDimming() } }
+    @Published var oledSaverEnabled = false {
+        didSet {
+            oledState.setAuto(oledSaverEnabled, now: ProcessInfo.processInfo.systemUptime)
+            syncOLEDSaver()
+        }
+    }
 
-    func wakeFromOLEDSaver() { dimmed = false }
+    func wakeFromOLEDSaver() {
+        oledState.wake()
+        syncOLEDSaver()
+    }
 
     let preview = PreviewFrames()
     private let session = AVCaptureSession()
@@ -53,6 +61,8 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
     private var desiredActive = false
     private var observers: [NSObjectProtocol] = []
     private var monitor: Timer?
+    private var oledTimer: Timer?
+    private var oledState = OLEDSaverState()
     private var previousBrightness: CGFloat?
     private var previousIdleTimer: Bool?
     private var lastFrameTime: TimeInterval = 0
@@ -68,11 +78,12 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
             self.starting = false
             if status.running && !self.streaming {
                 self.streamStarted = Date()
-                if self.oledSaverEnabled { self.dimmed = true }
             }
             self.streaming = status.running
             self.viewers = status.clients
-            if !status.running { self.streamStarted = nil; self.dimmed = false }
+            if !status.running { self.streamStarted = nil }
+            self.oledState.setStreaming(status.running, now: ProcessInfo.processInfo.systemUptime)
+            self.syncOLEDSaver()
             self.liveActivity.setStreaming(status.running, since: self.streamStarted)
             if let error = status.error { self.error = error }
             self.updateIdleTimer()
@@ -97,6 +108,7 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
 
     deinit {
         monitor?.invalidate()
+        oledTimer?.invalidate()
         observers.forEach(NotificationCenter.default.removeObserver)
         server.stop()
         let session = session
@@ -125,7 +137,7 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
 
     func deactivate() {
         desiredActive = false; ready = false
-        stopStream(); dimmed = false
+        stopStream()
         captureQueue.async {
             if self.session.isRunning { self.session.stopRunning() }
             self.preview.put(nil)
@@ -306,7 +318,12 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         server.start(token: token)
     }
 
-    func stopStream() { starting = false; server.stop() }
+    func stopStream() {
+        starting = false
+        oledState.setStreaming(false, now: ProcessInfo.processInfo.systemUptime)
+        syncOLEDSaver()
+        server.stop()
+    }
 
     var wifiURL: String? { wifiAddress.map { "http://\($0):8080/stream.mjpg?token=\(token)" } }
     var usbURL: String { "http://127.0.0.1:18080/stream.mjpg?token=\(token)" }
@@ -333,6 +350,20 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         } else if let previous = previousIdleTimer {
             UIApplication.shared.isIdleTimerDisabled = previous; previousIdleTimer = nil
         }
+    }
+
+    private func syncOLEDSaver() {
+        oledTimer?.invalidate()
+        oledTimer = nil
+        if dimmed != oledState.dimmed { dimmed = oledState.dimmed }
+        guard let deadline = oledState.deadline else { return }
+        let timer = Timer(timeInterval: max(0.001, deadline - ProcessInfo.processInfo.systemUptime), repeats: false) { [weak self] _ in
+            guard let self else { return }
+            self.oledState.advance(to: ProcessInfo.processInfo.systemUptime)
+            self.syncOLEDSaver()
+        }
+        oledTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
     }
 
     private func applyDimming() {
