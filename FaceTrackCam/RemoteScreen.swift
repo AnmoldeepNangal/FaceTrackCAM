@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 
 private enum RemotePanel: String, CaseIterable, Identifiable {
     case face = "FaceTrack", background = "Background", exposure = "AE", whiteBalance = "WB", settings = "Settings"
@@ -17,6 +18,7 @@ private enum RemotePanel: String, CaseIterable, Identifiable {
 private struct RemoteItem: Identifiable {
     let id: String
     let name: String
+    let thumbnail: UIImage? = nil
 }
 
 struct RemoteScreen: View {
@@ -25,6 +27,8 @@ struct RemoteScreen: View {
     @State private var code = ""
     @State private var panel: RemotePanel?
     @State private var focusedPanel: RemotePanel?
+    @State private var photo: PhotosPickerItem?
+    @State private var showPhotoPicker = false
 
     var body: some View {
         ZStack {
@@ -72,6 +76,12 @@ struct RemoteScreen: View {
             .padding(16)
         }
         .preferredColorScheme(.dark)
+        .photosPicker(isPresented: $showPhotoPicker, selection: $photo, matching: .images)
+        .task(id: photo) {
+            guard let photo, let data = try? await photo.loadTransferable(type: Data.self) else { return }
+            peer.command("uploadBackground", value: data.base64EncodedString())
+            self.photo = nil
+        }
     }
 
     private var pairing: some View {
@@ -112,11 +122,15 @@ struct RemoteScreen: View {
                 HStack {
                     choice("Off", selected: text("background") == "Off") { peer.command("background", value: "Off") }
                     choice("Portrait", selected: text("background") == "Blur") { peer.command("background", value: "Blur") }
+                    Button("Photos", systemImage: "photo.badge.plus") { showPhotoPicker = true }
                 }
                 ScrollView(.horizontal) {
                     HStack {
                         ForEach(items("backgrounds"), id: \.id) { item in
-                            choice(item.name, selected: false) { peer.command("asset", value: item.id) }
+                            Button { peer.command("asset", value: item.id) } label: {
+                                Group { if let image = item.thumbnail { Image(uiImage: image).resizable().scaledToFill() } else { Image(systemName: "photo") } }
+                                    .frame(width: 80, height: 64).clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            }
                         }
                     }
                 }.frame(maxHeight: 52)
@@ -140,6 +154,8 @@ struct RemoteScreen: View {
                     } label: { row("Quality", value: text("quality"), icon: "video") }
                     Toggle("Mirror stream", isOn: Binding(get: { peer.state["mirror"] as? Bool ?? false },
                         set: { peer.command("mirror", value: $0) })).tint(.blue).padding(12).background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+                    Toggle("Microphone", isOn: Binding(get: { peer.state["microphone"] as? Bool ?? false },
+                        set: { peer.command("microphone", value: $0) })).tint(.blue).padding(12).background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
                     ForEach(items("presets"), id: \.id) { item in
                         Button { peer.command("preset", value: item.id) } label: { row(item.name, value: "Apply", icon: "slider.horizontal.3") }
                     }
@@ -178,8 +194,8 @@ struct RemoteScreen: View {
     private func items(_ key: String) -> [RemoteItem] {
         (peer.state[key] as? [[String: String]] ?? []).compactMap { item in
             guard let id = item["id"], let name = item["name"] else { return nil }
-            return RemoteItem(id: id, name: name)
+            let image = item["thumb"].flatMap { Data(base64Encoded: $0) }.flatMap { UIImage(data: $0) }
+            return RemoteItem(id: id, name: name, thumbnail: image)
         }
     }
 }
-

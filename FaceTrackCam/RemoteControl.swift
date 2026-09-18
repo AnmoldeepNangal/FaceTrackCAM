@@ -7,10 +7,13 @@ extension CameraModel {
          "intensity": Double(settings.intensity), "subject": settings.subjectMode.rawValue,
          "exposure": exposure, "exposureLocked": exposureLocked, "temperature": whiteBalanceTemperature,
          "whiteBalanceLocked": whiteBalanceLocked, "background": settings.background.rawValue, "mirror": settings.mirrorStream,
+         "microphone": microphoneEnabled,
          "cameras": cameras.map { ["id": $0.id, "name": $0.name] },
          "qualities": VideoQuality.allCases.map { ["id": $0.rawValue, "name": $0.label] },
          "presets": presets.map { ["id": $0.id.uuidString, "name": $0.name] },
-         "backgrounds": backgrounds.enumerated().map { ["id": $0.element.id.uuidString, "name": "\($0.element.favorite ? "★ " : "")Background \($0.offset + 1)"] }]
+         "backgrounds": visibleBackgrounds.enumerated().map { asset in
+            ["id": asset.id.uuidString, "name": "Background", "thumb": asset.thumbnail?.jpegData(compressionQuality: 0.65)?.base64EncodedString() ?? ""]
+         }]
     }
 
     func applyRemote(_ command: [String: Any]) -> String? {
@@ -32,6 +35,9 @@ extension CameraModel {
             case "whiteBalanceLocked": whiteBalanceLocked = flag
             default: settings.mirrorStream = flag
             }
+        case "microphone":
+            guard let flag = command["value"] as? Bool else { return "Expected on/off" }
+            setMicrophoneEnabled(flag)
         case "intensity", "exposure", "temperature":
             guard let number = Float(value), number.isFinite else { return "Invalid adjustment" }
             switch action {
@@ -42,6 +48,9 @@ extension CameraModel {
         case "subject": guard let mode = SubjectMode(rawValue: value) else { return "Unknown mode" }; settings.subjectMode = mode
         case "background": guard let mode = BackgroundMode(rawValue: value), mode != .custom else { return "Choose a saved background" }; setBackgroundMode(mode)
         case "asset": guard let asset = backgrounds.first(where: { $0.id.uuidString == value }) else { return "Unknown background" }; selectBackground(asset)
+        case "uploadBackground":
+            guard let data = Data(base64Encoded: value), data.count <= 8_000_000 else { return "Invalid background image" }
+            loadBackground(data)
         case "preset": guard let preset = presets.first(where: { $0.id.uuidString == value }) else { return "Unknown preset" }; applyPreset(preset)
         case "savePreset": guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return "Enter a name" }; savePreset(name: value)
         case "relock": relockSubject()
@@ -51,4 +60,3 @@ extension CameraModel {
         return nil
     }
 }
-

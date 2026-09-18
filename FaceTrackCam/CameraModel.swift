@@ -3,6 +3,7 @@ import AVFoundation
 import CoreImage
 import ImageIO
 import Darwin
+import AVFAudio
 
 struct CameraChoice: Identifiable {
     let id: String
@@ -28,6 +29,7 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
     @Published private(set) var token = CameraLibrary.stableSecret("streamKey")
     let remoteKey = CameraLibrary.stableSecret("remoteKey")
     @Published var connectionAlerts = true
+    @Published private(set) var microphoneEnabled = false
     @Published private(set) var backgrounds: [BackgroundAsset] = CameraLibrary.load("backgrounds.json", fallback: [])
     @Published private(set) var recentBackgroundIDs: [UUID] = CameraLibrary.load("recents.json", fallback: [])
     @Published private(set) var presets: [CameraPreset] = CameraLibrary.load("presets.json", fallback: [])
@@ -171,45 +173,7 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
                 DispatchQueue.main.async {
                     guard let self, self.desiredActive else { return }
                     if granted { self.discoverAndStart() }
-                    else { self.permissionDenied = true; self.error = "Allow camera access in Settings to use FaceTrackCam." }
-                }
-            }
-        default: permissionDenied = true; error = "Allow camera access in Settings to use FaceTrackCam."
-        }
-    }
-
-    func deactivate() {
-        desiredActive = false; ready = false
-        stopStream()
-        captureQueue.async {
-            if self.session.isRunning { self.session.stopRunning() }
-            self.preview.put(nil)
-            if let device = self.device, device.hasTorch, (try? device.lockForConfiguration()) != nil {
-                device.torchMode = .off; device.unlockForConfiguration()
-            }
-        }
-        torch = false
-    }
-
-    private func discoverAndStart() {
-        let devices = AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInWideAngleCamera, .builtInUltraWideCamera, .builtInTelephotoCamera], mediaType: .video, position: .unspecified).devices
-        cameras = devices.map { CameraChoice(id: $0.uniqueID, name: $0.localizedName, front: $0.position == .front) }
-        guard let choice = devices.first(where: { $0.uniqueID == selectedCamera }) ?? devices.first(where: { $0.position == .front }) ?? devices.first else {
-            error = "No camera is available on this device."; return
-        }
-        updateOrientation()
-        switchCamera(choice.uniqueID)
-    }
-
-    func switchCamera(_ id: String) {
-        ready = false
-        let bias = exposure
-        let locked = exposureLocked
-        let temperature = whiteBalanceTemperature
-        let whiteBalanceIsLocked = whiteBalanceLocked
-        let preset: AVCaptureSession.Preset = settings.quality == .ultra ? .hd1920x1080 : .hd1280x720
-        captureQueue.async {
-            if self.device?.uniqueID == id && self.session.isRunning {
+                    else { sel…708 tokens truncated…g {
                 DispatchQueue.main.async { self.ready = self.desiredActive }
                 return
             }
