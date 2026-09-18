@@ -340,7 +340,7 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
 
     private func persistRecents() {
         do { try CameraLibrary.save(recentBackgroundIDs, name: "recents.json") }
-        catch { error = "Recent backgrounds could not be saved." }
+        catch { self.error = "Recent backgrounds could not be saved." }
     }
 
     private func persistLibrary() {

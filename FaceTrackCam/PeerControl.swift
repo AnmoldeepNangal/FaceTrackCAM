@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import CryptoKit
 import MultipeerConnectivity
 import Security
 
@@ -25,6 +26,11 @@ final class PeerControl: NSObject, ObservableObject {
     private var authorizedPeer: MCPeerID?
     private var activePeer: MCPeerID?
     private var failedPairings: [String: Int] = [:]
+    private var challenges: [String: String] = [:]
+    private var pairNonces: [String: String] = [:]
+    private var remoteNonce = ""
+    private var verifiedHost = false
+    private var enteredCode = ""
     private var revision = 0
     private var lastState = Data()
 
@@ -53,7 +59,7 @@ final class PeerControl: NSObject, ObservableObject {
 
     func connect(_ peer: MCPeerID) {
         guard role == .remote, !invited.contains(peer.displayName) else { return }
-        if let activePeer, activePeer != peer { session.disconnect(); authorized = false }
+        if let activePeer, activePeer != peer { session.disconnect(); authorized = false; verifiedHost = false }
         activePeer = peer
         invited.insert(peer.displayName)
         browser?.invitePeer(peer, to: session, withContext: nil, timeout: 20)
@@ -61,7 +67,8 @@ final class PeerControl: NSObject, ObservableObject {
 
     func pair(code: String) {
         guard role == .remote, connected else { return }
-        send(["type": "pair", "code": code.trimmingCharacters(in: .whitespacesAndNewlines)])
+        enteredCode = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        send(["type": "pair", "code": enteredCode])
     }
 
     func command(_ action: String, value: Any? = nil) {
@@ -96,10 +103,19 @@ final class PeerControl: NSObject, ObservableObject {
         guard let type = message["type"] as? String else { return }
         switch (role, type) {
         case (.host, "hello"):
-            let token = message["token"] as? String
-            if let token, token == PeerSecret.load("host:\(peer.displayName)") {
-                authorizedPeer = peer; authorized = true; lastState = Data()
-            }
+            guard let nonce = message["nonce"] as? String else { return }
+            pairNonces[peer.displayName] = nonce
+            guard let token = PeerSecret.load("host:\(peer.displayName)") else { return }
+            let challenge = UUID().uuidString
+            challenges[peer.displayName] = challenge
+            send(["type": "challenge", "nonce": challenge,
+                  "proof": Self.proof(token, text: "host:\(nonce)")], to: peer)
+        case (.host, "proof"):
+            guard let token = PeerSecret.load("host:\(peer.displayName)"),
+                  let challenge = challenges.removeValue(forKey: peer.displayName),
+                  let proof = message["proof"] as? String,
+                  proof == Self.proof(token, text: "remote:\(challenge)") else { return }
+            authorizedPeer = peer; authorized = true; lastState = Data()
         case (.host, "pair"):
             guard failedPairings[peer.displayName, default: 0] < 5 else { return }
             guard (message["code"] as? String) == pairingCode else {
@@ -110,22 +126,47 @@ final class PeerControl: NSObject, ObservableObject {
             let token = UUID().uuidString + UUID().uuidString
             PeerSecret.save(token, key: "host:\(peer.displayName)")
             authorizedPeer = peer; authorized = true; lastState = Data()
-            send(["type": "paired", "token": token], to: peer)
+            let nonce = pairNonces[peer.displayName] ?? ""
+            send(["type": "paired", "token": token,
+                  "proof": Self.proof(pairingCode, text: "pair:\(nonce)")], to: peer)
         case (.host, "command"):
             guard authorizedPeer == peer else { return }
             if let message = onCommand?(message) { send(["type": "error", "message": message], to: peer) }
             lastState = Data()
         case (.remote, "paired"):
-            guard let token = message["token"] as? String else { return }
+            guard !enteredCode.isEmpty,
+                  let token = message["token"] as? String,
+                  let proof = message["proof"] as? String,
+                  proof == Self.proof(enteredCode, text: "pair:\(remoteNonce)") else {
+                error = "Pairing response could not be verified."
+                return
+            }
             PeerSecret.save(token, key: "remote:\(peer.displayName)")
-            authorized = true; error = nil
+            verifiedHost = true; authorized = true; error = nil
+        case (.remote, "challenge"):
+            guard let token = PeerSecret.load("remote:\(peer.displayName)"),
+                  let nonce = message["nonce"] as? String,
+                  let proof = message["proof"] as? String,
+                  proof == Self.proof(token, text: "host:\(remoteNonce)") else {
+                error = "Host identity could not be verified. Pair again on the correct Host."
+                session.disconnect()
+                return
+            }
+            verifiedHost = true
+            send(["type": "proof", "proof": Self.proof(token, text: "remote:\(nonce)")], to: peer)
         case (.remote, "state"):
+            guard verifiedHost else { return }
             guard let snapshot = message["state"] as? [String: Any] else { return }
             authorized = true; state = snapshot
         case (.remote, "error"):
             error = message["message"] as? String
         default: break
         }
+    }
+
+    private static func proof(_ token: String, text: String) -> String {
+        let key = SymmetricKey(data: Data(token.utf8))
+        return Data(HMAC<SHA256>.authenticationCode(for: Data(text.utf8), using: key)).base64EncodedString()
     }
 }
 
@@ -136,12 +177,13 @@ extension PeerControl: MCSessionDelegate {
             case .connected:
                 self.connected = true
                 if self.role == .remote {
-                    self.send(["type": "hello", "token": PeerSecret.load("remote:\(peerID.displayName)") ?? ""])
+                    self.remoteNonce = UUID().uuidString
+                    self.send(["type": "hello", "nonce": self.remoteNonce], to: peerID)
                 }
             case .notConnected:
                 self.connected = !session.connectedPeers.isEmpty
                 if self.role == .host && self.authorizedPeer == peerID { self.authorized = false; self.authorizedPeer = nil }
-                if self.role == .remote && self.activePeer == peerID { self.authorized = false }
+                if self.role == .remote && self.activePeer == peerID { self.authorized = false; self.verifiedHost = false }
                 self.invited.remove(peerID.displayName)
             case .connecting: break
             @unknown default: break
