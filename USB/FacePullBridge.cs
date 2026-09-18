@@ -62,7 +62,16 @@ public static class FacePullBridge {
             await Task.WhenAny(up, down); phone.Close(); obs.Close();
             try { await Task.WhenAll(up, down); } catch { }
         } catch {
-            if (devicePort == 8080) try { obs.SendTimeout = 2000; var response = Encoding.ASCII.GetBytes("HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nRetry-After: 2\r\nConnection: close\r\n\r\n"); obs.GetStream().Write(response, 0, response.Length); } catch { }
+            if (devicePort == 8080) try {
+                // Drain the queued HTTP request before closing. On Windows, closing a
+                // socket with unread input can reset it before OBS sees the 503.
+                obs.ReceiveTimeout = 500; obs.SendTimeout = 2000;
+                var stream = obs.GetStream(); var discard = new byte[4096];
+                try { stream.Read(discard, 0, discard.Length); } catch { }
+                var response = Encoding.ASCII.GetBytes("HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nRetry-After: 2\r\nConnection: close\r\n\r\n");
+                stream.Write(response, 0, response.Length); stream.Flush();
+                obs.Client.Shutdown(SocketShutdown.Send);
+            } catch { }
         } finally { if (phone != null) phone.Close(); obs.Close(); Slots.Release(); }
     }
     public static void Run(int localPort, int muxPort, int devicePort, string serial) {

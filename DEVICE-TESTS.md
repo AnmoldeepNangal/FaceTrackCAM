@@ -18,6 +18,7 @@ These checks have not been completed by the coding agent. They require your devi
 | Leave frame for more than a second | View widens smoothly |
 | Blur and custom image | Subject remains visible; preview matches OBS |
 | Pick a large/rotated photo, cancel picker | Photo orientation correct; cancel leaves app usable |
+| Clear Custom recents | History disappears; active background, favorites, and saved-preset backgrounds remain usable |
 | Slow client or disconnected Wi-Fi | No accumulating frame queue; viewer count clears |
 | Connect more than three viewers | Extra stream request gets 503 |
 | Dim and wake | Stream continues; original brightness returns |

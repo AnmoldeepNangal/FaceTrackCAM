@@ -302,12 +302,12 @@ struct CameraScreen: View {
                 }.disabled(loadingPhoto)
                 Spacer()
                 Button("Clear recents", role: .destructive) { camera.clearRecentBackgrounds() }
-                    .padding(12).glassCapsule().disabled(camera.backgrounds.allSatisfy(\.favorite))
+                    .padding(12).glassCapsule().disabled(camera.recentBackgroundIDs.isEmpty)
             }
-            if !camera.backgrounds.isEmpty {
+            if !camera.visibleBackgrounds.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(spacing: 8) {
-                        ForEach(camera.backgrounds.sorted { $0.favorite && !$1.favorite }) { asset in
+                        ForEach(camera.visibleBackgrounds) { asset in
                             Button { camera.selectBackground(asset) } label: {
                                 Group {
                                     if let image = asset.thumbnail { Image(uiImage: image).resizable().scaledToFill() }

@@ -30,6 +30,7 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
     let remoteKey = CameraLibrary.stableSecret("remoteKey")
     @Published var connectionAlerts = true
     @Published private(set) var backgrounds: [BackgroundAsset] = CameraLibrary.load("backgrounds.json", fallback: [])
+    @Published private(set) var recentBackgroundIDs: [UUID] = CameraLibrary.load("recents.json", fallback: [])
     @Published private(set) var presets: [CameraPreset] = CameraLibrary.load("presets.json", fallback: [])
     @Published private(set) var selectedBackgroundID: UUID?
     private var backgroundRequest = UUID()
@@ -84,6 +85,10 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
 
     override init() {
         super.init()
+        if !FileManager.default.fileExists(atPath: CameraLibrary.directory.appendingPathComponent("recents.json").path) {
+            recentBackgroundIDs = backgrounds.map(\.id)
+            persistRecents()
+        }
         server.onRemoteState = { [weak self] in self?.remoteState() ?? [:] }
         server.onRemoteCommand = { [weak self] command in self?.applyRemote(command) }
         peer.onCommand = { [weak self] command in self?.applyRemote(command) }
@@ -279,6 +284,7 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
                 try jpeg.write(to: asset.url, options: .atomic)
                 DispatchQueue.main.async {
                     self.backgrounds.insert(asset, at: 0); self.persistLibrary()
+                    self.markRecent(asset.id)
                     if self.backgroundRequest == request { self.selectBackground(asset) }
                 }
             } catch { self.report("Background could not be saved: \(error.localizedDescription)") }
@@ -293,6 +299,7 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
                 guard self.backgroundRequest == request else { return }
                 self.captureQueue.async { self.processor.background = image }
                 self.selectedBackgroundID = asset.id; self.hasBackground = true; self.settings.background = .custom
+                self.markRecent(asset.id)
             }
         }
     }
@@ -305,12 +312,35 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         backgroundRequest = UUID()
         if selectedBackgroundID == asset.id { clearBackground() }
         backgrounds.removeAll { $0.id == asset.id }
+        recentBackgroundIDs.removeAll { $0 == asset.id }
         try? FileManager.default.removeItem(at: asset.url)
         persistLibrary()
+        persistRecents()
     }
 
     func clearRecentBackgrounds() {
-        for asset in backgrounds where !asset.favorite { removeBackground(asset) }
+        recentBackgroundIDs.removeAll()
+        persistRecents()
+        let retained = Set(presets.compactMap(\.backgroundID) + [selectedBackgroundID].compactMap { $0 })
+        let unused = backgrounds.filter { !$0.favorite && !retained.contains($0.id) }
+        for asset in unused { removeBackground(asset) }
+    }
+
+    var visibleBackgrounds: [BackgroundAsset] {
+        let favorites = backgrounds.filter(\.favorite)
+        let recents = recentBackgroundIDs.compactMap { id in backgrounds.first { $0.id == id && !$0.favorite } }
+        return favorites + recents
+    }
+
+    private func markRecent(_ id: UUID) {
+        recentBackgroundIDs.removeAll { $0 == id }
+        recentBackgroundIDs.insert(id, at: 0)
+        persistRecents()
+    }
+
+    private func persistRecents() {
+        do { try CameraLibrary.save(recentBackgroundIDs, name: "recents.json") }
+        catch { error = "Recent backgrounds could not be saved." }
     }
 
     private func persistLibrary() {

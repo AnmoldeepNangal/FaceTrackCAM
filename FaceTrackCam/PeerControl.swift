@@ -23,6 +23,8 @@ final class PeerControl: NSObject, ObservableObject {
     private var browser: MCNearbyServiceBrowser?
     private var invited = Set<String>()
     private var authorizedPeer: MCPeerID?
+    private var activePeer: MCPeerID?
+    private var failedPairings: [String: Int] = [:]
     private var revision = 0
     private var lastState = Data()
 
@@ -51,6 +53,8 @@ final class PeerControl: NSObject, ObservableObject {
 
     func connect(_ peer: MCPeerID) {
         guard role == .remote, !invited.contains(peer.displayName) else { return }
+        if let activePeer, activePeer != peer { session.disconnect(); authorized = false }
+        activePeer = peer
         invited.insert(peer.displayName)
         browser?.invitePeer(peer, to: session, withContext: nil, timeout: 20)
     }
@@ -78,11 +82,11 @@ final class PeerControl: NSObject, ObservableObject {
         guard role == .host, authorized, let data = try? JSONSerialization.data(withJSONObject: snapshot, options: .sortedKeys),
               data != lastState else { return }
         lastState = data; revision += 1
-        send(["type": "state", "revision": revision, "state": snapshot])
+        if let authorizedPeer { send(["type": "state", "revision": revision, "state": snapshot], to: authorizedPeer) }
     }
 
     private func send(_ message: [String: Any], to peer: MCPeerID? = nil) {
-        let targets = peer.map { [$0] } ?? session.connectedPeers
+        let targets = peer.map { [$0] } ?? (role == .remote ? activePeer.map { [$0] } ?? [] : session.connectedPeers)
         guard !targets.isEmpty, let data = try? JSONSerialization.data(withJSONObject: message) else { return }
         do { try session.send(data, toPeers: targets, with: .reliable) }
         catch { self.error = error.localizedDescription }
@@ -97,9 +101,12 @@ final class PeerControl: NSObject, ObservableObject {
                 authorizedPeer = peer; authorized = true; lastState = Data()
             }
         case (.host, "pair"):
+            guard failedPairings[peer.displayName, default: 0] < 5 else { return }
             guard (message["code"] as? String) == pairingCode else {
+                failedPairings[peer.displayName, default: 0] += 1
                 send(["type": "error", "message": "Pairing code is incorrect."], to: peer); return
             }
+            failedPairings[peer.displayName] = 0
             let token = UUID().uuidString + UUID().uuidString
             PeerSecret.save(token, key: "host:\(peer.displayName)")
             authorizedPeer = peer; authorized = true; lastState = Data()
@@ -133,7 +140,8 @@ extension PeerControl: MCSessionDelegate {
                 }
             case .notConnected:
                 self.connected = !session.connectedPeers.isEmpty
-                self.authorized = false; self.authorizedPeer = nil
+                if self.role == .host && self.authorizedPeer == peerID { self.authorized = false; self.authorizedPeer = nil }
+                if self.role == .remote && self.activePeer == peerID { self.authorized = false }
                 self.invited.remove(peerID.displayName)
             case .connecting: break
             @unknown default: break
