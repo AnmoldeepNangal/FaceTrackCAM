@@ -21,6 +21,9 @@ final class H264RTSPServer {
     var onViewers: ((Int) -> Void)?
     private let queue = DispatchQueue(label: "facepull.rtsp", qos: .userInitiated)
     private let encoder = H264Encoder()
+    private let deliveryGate = NSLock()
+    private var deliveryPending = false
+    private var hasViewers = false
     private var listener: NWListener?
     private var clients: [UUID: Client] = [:]
     private var timer: DispatchSourceTimer?
@@ -30,7 +33,15 @@ final class H264RTSPServer {
 
     init() {
         encoder.onFrame = { [weak self] frame in
-            self?.queue.async { self?.send(frame) }
+            guard let self else { return }
+            self.deliveryGate.lock()
+            guard !self.deliveryPending else { self.deliveryGate.unlock(); return }
+            self.deliveryPending = true
+            self.deliveryGate.unlock()
+            self.queue.async {
+                self.send(frame)
+                self.deliveryGate.lock(); self.deliveryPending = false; self.deliveryGate.unlock()
+            }
         }
         encoder.onError = { [weak self] message in self?.report(message) }
     }
@@ -41,7 +52,9 @@ final class H264RTSPServer {
             self.token = token
             self.encoder.start(size: size, frameRate: frameRate)
             do {
-                let listener = try NWListener(using: .tcp, on: 8554)
+                let tcp = NWProtocolTCP.Options()
+                tcp.noDelay = true
+                let listener = try NWListener(using: NWParameters(tls: nil, tcp: tcp), on: 8554)
                 self.listener = listener
                 listener.stateUpdateHandler = { [weak self, weak listener] state in
                     guard let self, let listener, self.listener === listener else { return }
@@ -64,7 +77,8 @@ final class H264RTSPServer {
     func stop() { queue.async { self.stopInternal() } }
 
     func offer(_ image: CIImage, time: CMTime) {
-        // The encoder has a two-frame ceiling; a slow network never stalls capture.
+        deliveryGate.lock(); let needed = hasViewers; deliveryGate.unlock()
+        guard needed else { return }
         encoder.offer(image, time: time)
     }
 
@@ -154,6 +168,7 @@ final class H264RTSPServer {
         case "PLAY":
             client.playing = true; client.awaitingKeyframe = true
             reportViewers()
+            encoder.requestKeyframe()
             reply(id, cseq: cseq, extra: "Session: \(client.sessionID)\r\n")
         case "GET_PARAMETER": reply(id, cseq: cseq, extra: "Session: \(client.sessionID)\r\n")
         case "TEARDOWN":
@@ -206,6 +221,7 @@ final class H264RTSPServer {
 
     private func reportViewers() {
         let count = clients.values.filter(\.playing).count
+        deliveryGate.lock(); hasViewers = count > 0; deliveryGate.unlock()
         DispatchQueue.main.async { [weak self] in self?.onViewers?(count) }
     }
 

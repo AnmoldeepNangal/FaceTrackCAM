@@ -21,8 +21,10 @@ with the user's normal iPhone installation process.
 2. In Settings → Connect, copy **Wi-Fi · H.264**. Its shape is
    `rtsp://PHONE_IP:8554/facepull?token=SAVED_KEY`.
 3. Add an OBS **Media Source**, turn off **Local File**, and paste the complete URL
-   into **Input**. Set input format to `rtsp` and FFmpeg option `rtsp_transport=tcp`
-   if OBS exposes those fields. Save the source.
+   into **Input**. Set **Network Buffering** to **0 MB** to avoid OBS's default
+   2 MB live-video buffer. Set input format to `rtsp` and FFmpeg options to
+   `rtsp_transport=tcp fflags=nobuffer flags=low_delay` if OBS exposes those fields.
+   Save the source.
 4. If RTSP does not work with the installed OBS version, use the labeled MJPEG
    compatibility URL with input format `mpjpeg` while diagnosing the cause.
 

@@ -16,10 +16,13 @@ final class H264Encoder {
 
     private let queue = DispatchQueue(label: "facepull.h264", qos: .userInitiated)
     private let context = CIContext(options: [.cacheIntermediates: false])
+    private let admission = NSLock()
     private var session: VTCompressionSession?
     private var size = CGSize.zero
     private var frameRate: Double = 30
-    private var pending = 0
+    private var admitted = 0
+    private var generation = 0
+    private var forceKeyframe = false
     private var running = false
 
     func start(size: CGSize, frameRate: Double) {
@@ -33,31 +36,45 @@ final class H264Encoder {
 
     func stop() { queue.async { self.stopInternal() } }
 
+    func requestKeyframe() { queue.async { self.forceKeyframe = true } }
+
     func offer(_ image: CIImage, time: CMTime) {
+        // Reject before dispatching: checking only on the encoder queue lets an
+        // arbitrary backlog of stale CIImages retain camera buffers.
+        admission.lock()
+        guard admitted < 2 else { admission.unlock(); return }
+        admitted += 1
+        admission.unlock()
         queue.async {
-            guard self.running, let session = self.session, self.pending < 2,
-                  let pool = VTCompressionSessionGetPixelBufferPool(session) else { return }
+            guard self.running, let session = self.session,
+                  let pool = VTCompressionSessionGetPixelBufferPool(session) else { self.releaseAdmission(); return }
             var buffer: CVPixelBuffer?
             guard CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pool, &buffer) == kCVReturnSuccess,
-                  let buffer else { return }
+                  let buffer else { self.releaseAdmission(); return }
             self.context.render(image, to: buffer, bounds: CGRect(origin: .zero, size: self.size), colorSpace: CGColorSpaceCreateDeviceRGB())
-            self.pending += 1
+            let generation = self.generation
             let duration = CMTime(seconds: 1 / self.frameRate, preferredTimescale: 90_000)
+            let properties = self.forceKeyframe ? [kVTEncodeFrameOptionKey_ForceKeyFrame: kCFBooleanTrue] as CFDictionary : nil
+            self.forceKeyframe = false
             let status = VTCompressionSessionEncodeFrame(session, imageBuffer: buffer, presentationTimeStamp: time,
-                duration: duration, frameProperties: nil, infoFlagsOut: nil) { [weak self] status, _, sample in
+                duration: duration, frameProperties: properties, infoFlagsOut: nil) { [weak self] status, _, sample in
                 guard let self else { return }
                 self.queue.async {
-                    self.pending = max(0, self.pending - 1)
-                    guard self.running, status == noErr, let sample,
+                    self.releaseAdmission()
+                    guard self.running, self.generation == generation, status == noErr, let sample,
                           let frame = Self.extract(sample) else { return }
                     self.onFrame?(frame)
                 }
             }
             if status != noErr {
-                self.pending = max(0, self.pending - 1)
+                self.releaseAdmission()
                 self.onError?("H.264 encoder rejected a frame (\(status)).")
             }
         }
+    }
+
+    private func releaseAdmission() {
+        admission.lock(); admitted = max(0, admitted - 1); admission.unlock()
     }
 
     private func createSession() -> Bool {
@@ -90,8 +107,9 @@ final class H264Encoder {
         let bitrate = max(1_000_000, min(12_000_000, Int(size.width * size.height * frameRate * 0.12)))
         VTSessionSetProperty(created, key: kVTCompressionPropertyKey_RealTime, value: kCFBooleanTrue)
         VTSessionSetProperty(created, key: kVTCompressionPropertyKey_AllowFrameReordering, value: kCFBooleanFalse)
+        VTSessionSetProperty(created, key: kVTCompressionPropertyKey_MaxFrameDelayCount, value: NSNumber(value: 1))
         VTSessionSetProperty(created, key: kVTCompressionPropertyKey_AverageBitRate, value: NSNumber(value: bitrate))
-        VTSessionSetProperty(created, key: kVTCompressionPropertyKey_MaxKeyFrameInterval, value: NSNumber(value: Int(frameRate * 2)))
+        VTSessionSetProperty(created, key: kVTCompressionPropertyKey_MaxKeyFrameInterval, value: NSNumber(value: Int(frameRate)))
         VTSessionSetProperty(created, key: kVTCompressionPropertyKey_ExpectedFrameRate, value: NSNumber(value: Int(frameRate)))
         VTCompressionSessionPrepareToEncodeFrames(created)
         return true
@@ -99,9 +117,10 @@ final class H264Encoder {
 
     private func stopInternal() {
         running = false
+        generation += 1
+        forceKeyframe = false
         if let session { VTCompressionSessionInvalidate(session) }
         session = nil
-        pending = 0
     }
 
     private static func extract(_ sample: CMSampleBuffer) -> Frame? {

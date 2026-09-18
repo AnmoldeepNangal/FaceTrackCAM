@@ -28,7 +28,7 @@ private extension View {
     }
 }
 
-private struct NativeMagneticSlider: View {
+struct NativeMagneticSlider: View {
     @Binding var value: Float
     let range: ClosedRange<Float>
     let defaultValue: Float
@@ -74,13 +74,13 @@ struct CameraScreen: View {
     @AppStorage("appMode") private var appMode = "host"
 
     var body: some View {
-        preview.ignoresSafeArea()
-        .contentShape(Rectangle())
-        .onTapGesture { dismissTools() }
-        .overlay { if showGrid { framingGrid.ignoresSafeArea().allowsHitTesting(false) } }
-        .safeAreaInset(edge: .top, spacing: 0) { topBar.background(Color.clear) }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
+        ZStack {
+            preview.ignoresSafeArea()
+                .contentShape(Rectangle()).onTapGesture { dismissTools() }
+            if showGrid { framingGrid.ignoresSafeArea().allowsHitTesting(false) }
             VStack(spacing: 8) {
+                topBar
+                Spacer(minLength: 0)
                 if let panel {
                     panelContent(panel).padding(.horizontal, panel == .settings ? 0 : 24)
                         .opacity(camera.streaming ? 0.55 : 1)
@@ -322,7 +322,7 @@ struct CameraScreen: View {
                             }
                         }
                     }.padding(4)
-                }
+                }.frame(height: 72)
             }
         }.transition(.scale(scale: 0.95, anchor: .bottom).combined(with: .opacity))
     }

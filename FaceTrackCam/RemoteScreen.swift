@@ -91,7 +91,7 @@ struct RemoteScreen: View {
         switch panel {
         case .face:
             VStack(spacing: 8) {
-                adjustment("Face follow", action: "intensity", enabled: "tracking", range: 0.8...2.2)
+                adjustment("Face follow", action: "intensity", enabled: "tracking", range: 0.8...2.2, defaultValue: 1.8, step: 0.1)
                 HStack {
                     choice("Lock me", selected: text("subject") == "Lock me") { peer.command("subject", value: "Lock me") }
                     choice("Auto widen", selected: text("subject") == "Auto widen") { peer.command("subject", value: "Auto widen") }
@@ -113,9 +113,9 @@ struct RemoteScreen: View {
                 }.frame(maxHeight: 52)
             }
         case .exposure:
-            adjustment("Exposure", action: "exposure", enabled: "exposureLocked", range: -2...2)
+            adjustment("Exposure", action: "exposure", enabled: "exposureLocked", range: -2...2, defaultValue: 0, step: 0.1)
         case .whiteBalance:
-            adjustment("White balance", action: "temperature", enabled: "whiteBalanceLocked", range: 2500...6500)
+            adjustment("White balance", action: "temperature", enabled: "whiteBalanceLocked", range: 2500...6500, defaultValue: 4500, step: 50)
         case .settings:
             ScrollView {
                 VStack(spacing: 8) {
@@ -123,7 +123,7 @@ struct RemoteScreen: View {
                         ForEach(items("cameras"), id: \.id) { item in
                             Button(item.name) { peer.command("lens", value: item.id) }
                         }
-                    } label: { row("Lens", value: text("lens"), icon: "camera") }
+                    } label: { row("Lens", value: items("cameras").first(where: { $0.id == text("lens") })?.name ?? "Camera", icon: "camera") }
                     Menu {
                         ForEach(items("qualities"), id: \.id) { item in
                             Button(item.name) { peer.command("quality", value: item.id) }
@@ -139,12 +139,19 @@ struct RemoteScreen: View {
         }
     }
 
-    private func adjustment(_ title: String, action: String, enabled: String, range: ClosedRange<Double>) -> some View {
+    private func adjustment(_ title: String, action: String, enabled: String,
+                            range: ClosedRange<Float>, defaultValue: Float, step: Float) -> some View {
         HStack(spacing: 16) {
             Toggle(title, isOn: Binding(get: { peer.state[enabled] as? Bool ?? false },
                 set: { peer.command(enabled, value: $0) })).labelsHidden()
-            Slider(value: Binding(get: { (peer.state[action] as? NSNumber)?.doubleValue ?? range.lowerBound },
-                set: { peer.command(action, value: String(format: "%.2f", $0)) }), in: range)
+                .onChange(of: peer.state[enabled] as? Bool) { _, _ in FaceTrackHaptics.tap() }
+            NativeMagneticSlider(value: Binding(get: { (peer.state[action] as? NSNumber).map { Float(truncating: $0) } ?? defaultValue },
+                set: {
+                    if action == "temperature" { peer.command("whiteBalanceLocked", value: true) }
+                    peer.command(action, value: String(format: "%.2f", $0))
+                }),
+                range: range, defaultValue: defaultValue, step: step)
+                .accessibilityLabel(title + " adjustment")
         }.padding(12).background(.ultraThinMaterial, in: Capsule())
     }
 

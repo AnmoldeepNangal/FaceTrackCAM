@@ -45,7 +45,6 @@ struct ProcessingSettings: Codable {
 
 // All state is owned by the camera's serial processing queue.
 final class FrameProcessor {
-    let context = CIContext(options: [.cacheIntermediates: false])
     var settings = ProcessingSettings()
     var background: CIImage?
     private let segmentation = VNGeneratePersonSegmentationRequest()
@@ -58,6 +57,12 @@ final class FrameProcessor {
     private var lockedObservation: VNDetectedObjectObservation?
     private var sequence = VNSequenceRequestHandler()
     private var previousMode: SubjectMode = .lock
+    private var groupFaces: CGRect?
+    private var lastDetection: TimeInterval = 0
+    private var lastGroupDetection: TimeInterval = 0
+    private var lastTrack: TimeInterval = 0
+    private var cachedMask: CIImage?
+    private var lastSegmentation: TimeInterval = 0
     var relockRequested = false
 
     init() {
@@ -68,6 +73,8 @@ final class FrameProcessor {
     func reset() {
         face = nil; crop = nil; lastTime = 0; lastFaceTime = 0
         lockedObservation = nil; sequence = VNSequenceRequestHandler()
+        groupFaces = nil; lastDetection = 0; lastGroupDetection = 0; lastTrack = 0
+        cachedMask = nil; lastSegmentation = 0
     }
 
     func process(_ buffer: CVPixelBuffer, time: TimeInterval) throws -> CIImage {
@@ -81,32 +88,49 @@ final class FrameProcessor {
             reset(); relockRequested = false; previousMode = settings.subjectMode
         }
         if settings.tracking {
-            if settings.subjectMode == .lock, let observation = lockedObservation {
-                let request = VNTrackObjectRequest(detectedObjectObservation: observation)
-                request.trackingLevel = .accurate
-                try sequence.perform([request], on: buffer)
-                if let result = request.results?.first as? VNDetectedObjectObservation, result.confidence > 0.45 {
-                    lockedObservation = result; face = result.boundingBox; lastFaceTime = time
-                } else {
-                    // Do not jump to a different person after the locked subject leaves.
-                    if time - lastFaceTime > 1 { face = nil }
+            let detectGroup = settings.subjectMode == .group && (lastGroupDetection == 0 || time - lastGroupDetection >= 0.25)
+            if detectGroup || (lockedObservation == nil && (lastDetection == 0 || time - lastDetection >= 0.25)) {
+                try VNImageRequestHandler(ciImage: image).perform([detection])
+                lastDetection = time
+                let faces = detection.results?.map(\.boundingBox) ?? []
+                if settings.subjectMode == .group {
+                    groupFaces = faces.count > 1 ? Framing.group(faces) : nil
+                    lastGroupDetection = time
                 }
-            } else {
-            try VNImageRequestHandler(ciImage: image).perform([detection])
-            let faces = detection.results?.map(\.boundingBox) ?? []
-            let selected = settings.subjectMode == .group ? Framing.group(faces) : Framing.subject(from: faces, previous: face)
-            if let target = selected {
-                face = target
-                lastFaceTime = time
-                if settings.subjectMode == .lock { lockedObservation = VNDetectedObjectObservation(boundingBox: target) }
-            } else if time - lastFaceTime > 1.0 { face = nil }
+                if let target = Framing.subject(from: faces, previous: face) {
+                    face = target; lastFaceTime = time
+                    lockedObservation = Self.trackable(target) ? VNDetectedObjectObservation(boundingBox: target) : nil
+                } else if time - lastFaceTime > 1 { face = nil; lockedObservation = nil }
+            } else if time - lastTrack >= 1.0 / 15, let observation = lockedObservation {
+                lastTrack = time
+                if Self.trackable(observation.boundingBox) {
+                    let request = VNTrackObjectRequest(detectedObjectObservation: observation)
+                    request.trackingLevel = .fast
+                    do {
+                        try sequence.perform([request], on: buffer)
+                        if let result = request.results?.first as? VNDetectedObjectObservation,
+                           result.confidence > 0.45, Self.trackable(result.boundingBox) {
+                            lockedObservation = result; face = result.boundingBox; lastFaceTime = time
+                        } else { lockedObservation = nil; lastDetection = 0 }
+                    } catch {
+                        // Vision can reject a previously returned box after rapid
+                        // motion. Discard that tracker and reacquire by detection.
+                        lockedObservation = nil; lastDetection = 0
+                    }
+                } else { lockedObservation = nil; lastDetection = 0 }
+                if lockedObservation == nil && time - lastFaceTime > 1 {
+                    face = nil
+                }
             }
-        } else { face = nil; lockedObservation = nil }
+        } else { face = nil; lockedObservation = nil; groupFaces = nil }
 
         if settings.background != .off {
-            try VNImageRequestHandler(ciImage: image).perform([segmentation])
-            if let result = segmentation.results?.first {
-                let mask = CIImage(cvPixelBuffer: result.pixelBuffer)
+            if cachedMask == nil || time - lastSegmentation >= 1.0 / 15 {
+                try VNImageRequestHandler(ciImage: image).perform([segmentation])
+                cachedMask = segmentation.results?.first.map { CIImage(cvPixelBuffer: $0.pixelBuffer) }
+                lastSegmentation = time
+            }
+            if let mask = cachedMask {
                 let scaledMask = mask.transformed(by: .init(scaleX: bounds.width / mask.extent.width, y: bounds.height / mask.extent.height))
                 let replacement: CIImage?
                 if settings.background == .blur {
@@ -118,11 +142,11 @@ final class FrameProcessor {
                     image = blend.outputImage?.cropped(to: bounds) ?? image
                 }
             }
-        }
+        } else { cachedMask = nil }
         let size = settings.outputSize
         let aspect = size.width / size.height
-        let target = settings.subjectMode == .group && face != nil
-            ? Framing.groupCrop(in: bounds, aspect: aspect, faces: face!)
+        let target = settings.subjectMode == .group && groupFaces != nil
+            ? Framing.groupCrop(in: bounds, aspect: aspect, faces: groupFaces!)
             : Framing.crop(in: bounds, aspect: aspect, face: face, intensity: settings.intensity)
         crop = Framing.clamp(crop.map { Framing.interpolate($0, to: target, amount: CGFloat(1 - exp(-5 * dt))) } ?? target,
                              in: bounds, aspect: aspect)
@@ -141,6 +165,12 @@ final class FrameProcessor {
         let scaled = image.transformed(by: .init(scaleX: scale, y: scale))
         let rect = CGRect(x: scaled.extent.midX - size.width / 2, y: scaled.extent.midY - size.height / 2, width: size.width, height: size.height)
         return scaled.cropped(to: rect).transformed(by: .init(translationX: -rect.minX, y: -rect.minY))
+    }
+
+    private static func trackable(_ box: CGRect) -> Bool {
+        box.minX.isFinite && box.minY.isFinite && box.width.isFinite && box.height.isFinite &&
+        box.minX >= 0 && box.minY >= 0 && box.maxX <= 1 && box.maxY <= 1 &&
+        box.width >= 0.02 && box.height >= 0.02
     }
 }
 

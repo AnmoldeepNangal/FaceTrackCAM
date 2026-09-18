@@ -542,11 +542,11 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
             nextFrameTime = max(time, nextFrameTime + 1 / limit)
             do {
                 let image = try processor.process(buffer, time: time)
-                // Materialize before releasing the camera buffer; preview and stream share it.
-                guard let cg = processor.context.createCGImage(image, from: image.extent) else { return }
-                let finished = CIImage(cgImage: cg)
-                preview.put(finished); server.offer(finished)
-                rtsp.offer(finished, time: CMSampleBufferGetPresentationTimeStamp(sampleBuffer))
+                // CIImage retains its source buffer. Keep only the latest preview;
+                // each encoder owns its own bounded admission instead of forcing a
+                // GPU readback and a second upload on the capture queue.
+                preview.put(image); server.offer(image)
+                rtsp.offer(image, time: CMSampleBufferGetPresentationTimeStamp(sampleBuffer))
                 statsFrames += 1
                 if time - statsTime >= 1 {
                     let value = statsTime == 0 ? 0 : Int((Double(statsFrames) / (time - statsTime)).rounded())
