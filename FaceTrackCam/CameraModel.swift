@@ -71,6 +71,7 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
     private var desiredActive = false
     private var observers: [NSObjectProtocol] = []
     private var monitor: Timer?
+    private var remoteStateTimer: Timer?
     private var oledTimer: Timer?
     private var oledState = OLEDSaverState()
     private var previousBrightness: CGFloat?
@@ -113,6 +114,9 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         monitor = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
             guard let self else { return }
             self.updateMonitor()
+        }
+        remoteStateTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
+            guard let self else { return }
             self.peer.publish(self.remoteState())
         }
         observe(UIDevice.orientationDidChangeNotification, object: nil) { [weak self] _ in self?.updateOrientation() }
@@ -132,6 +136,7 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
 
     deinit {
         monitor?.invalidate()
+        remoteStateTimer?.invalidate()
         oledTimer?.invalidate()
         observers.forEach(NotificationCenter.default.removeObserver)
         server.stop()

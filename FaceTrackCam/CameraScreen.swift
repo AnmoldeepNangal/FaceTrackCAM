@@ -283,7 +283,7 @@ struct CameraScreen: View {
     private func backgroundChoice(_ mode: BackgroundMode, _ title: String) -> some View {
         Button {
             if mode == .custom {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) { showRecentBackground.toggle() }
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) { showRecentBackground = true }
             } else {
                 camera.setBackgroundMode(mode); showRecentBackground = false
             }

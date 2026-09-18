@@ -5,16 +5,16 @@
 1. Install **Apple Devices** from the Microsoft Store. Connect your iPhone 13 Pro with a Lightning **data** cable, unlock it, open Apple Devices, and tap **Trust** on the phone.
 2. Keep this USB folder together. Right-click `Setup-USB.ps1` → **Run with PowerShell**, or run `powershell -NoProfile -ExecutionPolicy Bypass -File .\Setup-USB.ps1` from this folder. It copies the bridge into your Windows user profile and adds automatic startup at login. No Python or iproxy download is needed.
 3. Install the updated FacePull build. Choose **High · 1280 × 720 · 30 fps** as a starting point and tap the shutter to start streaming.
-4. In **Settings → Connect**, copy the complete **USB** URL. It looks like `http://127.0.0.1:18080/stream.mjpg?token=YOUR_SAVED_KEY`. The key now persists across app launches and stream restarts; removing app data can change it.
-5. In OBS add **Media Source**, uncheck **Local File**, and paste that URL into **Input**. If needed, enter `mpjpeg` in **Input Format**. Enable restart when the source becomes active. Save the source. Video has no audio; add your microphone separately.
+4. In **Settings → Connect**, copy **USB · H.264**. It looks like `rtsp://127.0.0.1:18554/facepull?token=YOUR_SAVED_KEY`. The key persists across app launches and stream restarts; removing app data can change it.
+5. In OBS add **Media Source**, uncheck **Local File**, and paste the complete URL into **Input**. Set **Input Format** to `rtsp` and **FFmpeg Options** to `rtsp_transport=tcp` if those fields are available. Enable restart when the source becomes active. Save the source. Video has no audio; add your microphone separately. If the new RTSP path fails during device testing, use the labeled MJPEG compatibility URL and `mpjpeg` input format.
 
 ## Each session
 
-Plug in the iPhone, open FacePull, and start streaming. Leave FacePull in the foreground. Its OLED saver can black out the app while streaming continues; do not lock the phone with its side button. The bridge stays running and accepts new connections after cable reconnection. OBS may need its source restarted after a cable disconnect.
+Plug in the iPhone, open FacePull, and start streaming. Leave FacePull in the foreground. Its OLED saver can black out the app while streaming continues; do not lock the phone with its side button. The bridge stays running and accepts new connections after cable reconnection. Automatic OBS recovery after an actual cable disconnect still needs on-device testing.
 
 ## Wi-Fi
 
-Use the complete **Wi-Fi** URL from Settings → Connect in a second saved OBS Media Source. This uses the iPhone IP and port 8080 directly. Keep phone and PC on the same LAN. For an unchanged iPhone IP, make a DHCP reservation in your router and keep the phone's private Wi-Fi address fixed for that network. The app cannot assign router addresses. A bare IP without the port, path, and saved access key is not a media URL.
+Use the complete **Wi-Fi · H.264** URL from Settings → Connect in a second saved OBS Media Source. This uses the iPhone IP and port 8554 directly. Keep phone and PC on the same LAN. For an unchanged iPhone IP, make a DHCP reservation in your router and keep the phone's private Wi-Fi address fixed for that network. The app cannot assign router addresses. A bare IP without the port, path, and saved access key is not a media URL.
 
 Save USB and Wi-Fi sources once; enable the one you need. USB always uses `127.0.0.1:18080`; Wi-Fi uses the reserved iPhone IP. Both use the same saved stream key.
 
@@ -27,7 +27,7 @@ While FacePull is streaming, open `http://127.0.0.1:18080/remote` for USB, or `h
 - Confirm the phone appears in Apple Devices and trusts the computer.
 - Start streaming before enabling the OBS source.
 - Run `Start-USB.ps1` if needed. Only one bridge owns the local port.
-- Try the USB remote page to check the route. A 503 response means the bridge is running but cannot connect to the phone/app yet.
+- Try the USB remote page at `http://127.0.0.1:18080/remote` to check the legacy control route. A 503 response means the bridge is running but cannot connect to the phone/app yet. The RTSP port closes an unavailable connection instead of returning HTTP.
 - Use one connected iPhone, or start the bridge with `-DeviceID` and the phone's UDID.
 - Apple's Mobile Device service was not found on this PC during development. Install/repair Apple's device support if USB is unavailable.
 

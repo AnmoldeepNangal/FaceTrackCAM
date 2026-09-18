@@ -42,7 +42,8 @@ def handle(sock):
                 response(sock, {'DeviceList': [{'DeviceID': 7, 'Properties': {'ConnectionType': 'USB', 'SerialNumber': 'TEST'}}] if online.is_set() else []})
             else:
                 assert value['MessageType'] == 'Connect' and value['DeviceID'] == 7
-                assert value['PortNumber'] == socket.htons(8080)
+                device_port = socket.ntohs(value['PortNumber'])
+                assert device_port in (8080, 8554)
                 response(sock, {'Number': 0})
                 data = b''
                 while b'\r\n\r\n' not in data:
@@ -50,8 +51,12 @@ def handle(sock):
                     if not chunk:
                         return
                     data += chunk
-                assert b'/status?token=test' in data
-                sock.sendall(b'HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nOK')
+                if device_port == 8080:
+                    assert b'/status?token=test' in data
+                    sock.sendall(b'HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nOK')
+                else:
+                    assert b'OPTIONS rtsp://' in data
+                    sock.sendall(b'RTSP/1.0 200 OK\r\nCSeq: 1\r\nContent-Length: 0\r\n\r\n')
         except (EOFError, ConnectionError):
             pass
         except Exception as exc:
@@ -72,6 +77,8 @@ threading.Thread(target=serve, daemon=True).start()
 reserve = socket.socket(); reserve.bind(('127.0.0.1', 0)); port = reserve.getsockname()[1]; reserve.close()
 script = pathlib.Path(__file__).with_name('Run-Bridge.ps1')
 process = subprocess.Popen(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(script), '-LocalPort', str(port), '-MuxPort', str(service.getsockname()[1])], creationflags=subprocess.CREATE_NO_WINDOW, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+reserve = socket.socket(); reserve.bind(('127.0.0.1', 0)); rtsp_port = reserve.getsockname()[1]; reserve.close()
+rtsp = subprocess.Popen(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(script), '-LocalPort', str(rtsp_port), '-DevicePort', '8554', '-MuxPort', str(service.getsockname()[1])], creationflags=subprocess.CREATE_NO_WINDOW, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 try:
     for attempt in range(100):
         try:
@@ -94,14 +101,27 @@ try:
                 result += data
             return result
     assert get().endswith(b'OK')
+    for attempt in range(100):
+        try:
+            with socket.create_connection(('127.0.0.1', rtsp_port), timeout=.2): break
+        except OSError:
+            if rtsp.poll() is not None: raise RuntimeError(rtsp.communicate())
+            time.sleep(.1)
+    def get_rtsp():
+        with socket.create_connection(('127.0.0.1', rtsp_port), timeout=5) as client:
+            client.sendall(b'OPTIONS rtsp://127.0.0.1/facepull?token=test RTSP/1.0\r\nCSeq: 1\r\n\r\n')
+            return client.recv(4096)
+    assert b'RTSP/1.0 200 OK' in get_rtsp()
     online.clear()
     offline = get()
     assert b'503 Service Unavailable' in offline, offline
     online.set()
     assert get().endswith(b'OK')
+    assert b'RTSP/1.0 200 OK' in get_rtsp()
     assert not failures, failures
-    print('PASS: USB handshake, bidirectional HTTP forwarding, unplug handling, and reconnect')
+    print('PASS: USB handshake, HTTP and RTSP forwarding, unplug handling, and reconnect')
 finally:
     process.terminate(); process.wait(timeout=5)
+    rtsp.terminate(); rtsp.wait(timeout=5)
     stopped.set(); service.close()
 

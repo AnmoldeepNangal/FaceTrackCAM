@@ -22,7 +22,7 @@ enum VideoQuality: String, CaseIterable, Identifiable, Codable {
         switch self { case .standard: return CGSize(width: 960, height: 540); case .high: return CGSize(width: 1280, height: 720); case .ultra: return CGSize(width: 1920, height: 1080) }
     }
     var frameRate: Double { self == .ultra ? 24 : 30 }
-    var label: String { "\(rawValue) · \(Int(size.width)) × \(Int(size.height)) · \(Int(frameRate)) fps" }
+    var label: String { "\(rawValue) · \(Int(size.width)) × \(Int(size.height)) · up to \(Int(frameRate)) FPS" }
 }
 
 enum SubjectMode: String, Codable, CaseIterable {

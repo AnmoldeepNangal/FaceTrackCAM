@@ -107,7 +107,15 @@ final class H264RTSPServer {
     private func parseRequests(_ id: UUID) {
         guard let client = clients[id] else { return }
         let end = Data("\r\n\r\n".utf8)
-        while let range = client.input.range(of: end) {
+        while !client.input.isEmpty {
+            if client.input.first == 0x24 {
+                guard client.input.count >= 4 else { return }
+                let length = Int(client.input[2]) << 8 | Int(client.input[3])
+                guard client.input.count >= length + 4 else { return }
+                client.input.removeSubrange(..<(length + 4))
+                continue
+            }
+            guard let range = client.input.range(of: end) else { return }
             let header = Data(client.input[..<range.upperBound])
             client.input.removeSubrange(..<range.upperBound)
             guard let request = String(data: header, encoding: .utf8) else { remove(id); return }
@@ -146,7 +154,7 @@ final class H264RTSPServer {
         case "PLAY":
             client.playing = true; client.awaitingKeyframe = true
             reportViewers()
-            reply(id, cseq: cseq, extra: "Session: \(client.sessionID)\r\nRTP-Info: url=\(uri)/trackID=0;seq=\(client.sequence)\r\n")
+            reply(id, cseq: cseq, extra: "Session: \(client.sessionID)\r\n")
         case "GET_PARAMETER": reply(id, cseq: cseq, extra: "Session: \(client.sessionID)\r\n")
         case "TEARDOWN":
             reply(id, cseq: cseq, extra: "Session: \(client.sessionID)\r\n")
