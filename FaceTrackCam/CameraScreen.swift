@@ -74,10 +74,11 @@ struct CameraScreen: View {
     @AppStorage("appMode") private var appMode = "host"
 
     var body: some View {
-        ZStack {
-            preview.ignoresSafeArea()
+        GeometryReader { layout in
+          ZStack {
+            preview
                 .contentShape(Rectangle()).onTapGesture { dismissTools() }
-            if showGrid { framingGrid.ignoresSafeArea().allowsHitTesting(false) }
+            if showGrid { framingGrid.allowsHitTesting(false) }
             VStack(spacing: 8) {
                 topBar
                 Spacer(minLength: 0)
@@ -87,7 +88,14 @@ struct CameraScreen: View {
                         .transition(.asymmetric(insertion: .scale(scale: 0.95, anchor: .bottom).combined(with: .opacity), removal: .scale(scale: 0.95, anchor: .bottom).combined(with: .opacity)))
                 }
                 controls
-            }.background(Color.clear)
+            }
+            .padding(.top, layout.safeAreaInsets.top)
+            .padding(.bottom, layout.safeAreaInsets.bottom)
+            .padding(.leading, layout.safeAreaInsets.leading)
+            .padding(.trailing, layout.safeAreaInsets.trailing)
+            .background(Color.clear)
+          }
+          .ignoresSafeArea(.container)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .statusBarHidden().fontDesign(.default).tint(.white)
@@ -467,3 +475,4 @@ struct CameraScreen: View {
         }
     }
 }
+
