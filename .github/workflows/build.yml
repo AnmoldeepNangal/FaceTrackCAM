@@ -41,6 +41,14 @@ jobs:
           test -d "$APP/PlugIns/StreamActivity.appex"
           test "$(/usr/libexec/PlistBuddy -c 'Print :NSSupportsLiveActivities' "$APP/Info.plist")" = true
           test "$(/usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' "$APP/PlugIns/StreamActivity.appex/Info.plist")" = com.apple.widgetkit-extension
+      - name: Verify app icon source and bundle
+        run: |
+          ICON=FaceTrackCam/Assets/Icons.xcassets/AppIcon.appiconset/FacePull.png
+          APP=derived_data/Build/Products/Release-iphoneos/FaceTrackCam.app
+          test "$(sips -g pixelWidth "$ICON" | tail -1 | awk '{print $2}')" = 1024
+          test "$(sips -g pixelHeight "$ICON" | tail -1 | awk '{print $2}')" = 1024
+          test -s "$APP/Assets.car"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconName' "$APP/Info.plist")" = AppIcon
       - name: Package unsigned IPA
         run: |
           mkdir -p Payload
