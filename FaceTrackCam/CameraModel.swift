@@ -197,6 +197,7 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         ready = false
         let bias = exposure
         let locked = exposureLocked
+        let preset: AVCaptureSession.Preset = settings.quality == .ultra ? .hd1920x1080 : .hd1280x720
         captureQueue.async {
             if self.device?.uniqueID == id && self.session.isRunning {
                 DispatchQueue.main.async { self.ready = self.desiredActive }
@@ -206,7 +207,7 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
             do {
                 let input = try AVCaptureDeviceInput(device: candidate)
                 self.session.beginConfiguration()
-                if self.session.canSetSessionPreset(.hd1920x1080) { self.session.sessionPreset = .hd1920x1080 }
+                if self.session.canSetSessionPreset(preset) { self.session.sessionPreset = preset }
                 let oldInputs = self.session.inputs
                 oldInputs.forEach(self.session.removeInput)
                 guard self.session.canAddInput(input) else {
@@ -216,7 +217,9 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
                 self.session.addInput(input)
                 if self.session.outputs.isEmpty {
                     self.output.alwaysDiscardsLateVideoFrames = true
-                    self.output.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
+                    let yuv = kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
+                    let pixelFormat = self.output.availableVideoCVPixelFormatTypes.contains(yuv) ? yuv : kCVPixelFormatType_32BGRA
+                    self.output.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: pixelFormat]
                     self.output.setSampleBufferDelegate(self, queue: self.captureQueue)
                     guard self.session.canAddOutput(self.output) else {
                         self.session.commitConfiguration(); self.report("Video output is unavailable."); return
@@ -257,6 +260,13 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
     private func updateSettings() {
         let snapshot = settings
         captureQueue.async {
+            let preset: AVCaptureSession.Preset = snapshot.quality == .ultra ? .hd1920x1080 : .hd1280x720
+            if self.session.sessionPreset != preset && self.session.canSetSessionPreset(preset) {
+                self.session.beginConfiguration()
+                self.session.sessionPreset = preset
+                self.session.commitConfiguration()
+                self.processor.reset()
+            }
             if self.processor.settings.format != snapshot.format { self.processor.reset() }
             self.processor.settings = snapshot
         }

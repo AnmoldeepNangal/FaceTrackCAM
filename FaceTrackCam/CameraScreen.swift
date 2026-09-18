@@ -149,7 +149,7 @@ struct CameraScreen: View {
     private var preview: some View {
         ZStack {
             Color.black
-            if camera.ready { ProcessedPreview(frames: camera.preview, mirrored: camera.frontCamera && camera.mirrorPreview != camera.settings.mirrorStream) }
+            if camera.ready { ProcessedPreview(frames: camera.preview, mirrored: camera.frontCamera && camera.mirrorPreview != camera.settings.mirrorStream, paused: camera.dimmed) }
             else { Image(systemName: camera.permissionDenied ? "camera.fill" : "camera").font(.largeTitle).foregroundStyle(.secondary) }
         }
         .clipped().frame(maxWidth: .infinity, maxHeight: .infinity)

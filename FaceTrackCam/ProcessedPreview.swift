@@ -13,6 +13,7 @@ final class PreviewFrames {
 struct ProcessedPreview: UIViewRepresentable {
     let frames: PreviewFrames
     let mirrored: Bool
+    let paused: Bool
 
     func makeCoordinator() -> Renderer { Renderer(frames: frames) }
     func makeUIView(context: Context) -> MTKView {
@@ -21,12 +22,16 @@ struct ProcessedPreview: UIViewRepresentable {
         view.colorPixelFormat = .bgra8Unorm
         view.preferredFramesPerSecond = 30
         view.enableSetNeedsDisplay = false
+        view.isPaused = paused
         view.delegate = context.coordinator
         view.clearColor = MTLClearColorMake(0, 0, 0, 1)
         context.coordinator.mirrored = mirrored
         return view
     }
-    func updateUIView(_ view: MTKView, context: Context) { context.coordinator.mirrored = mirrored }
+    func updateUIView(_ view: MTKView, context: Context) {
+        context.coordinator.mirrored = mirrored
+        view.isPaused = paused
+    }
     static func dismantleUIView(_ view: MTKView, coordinator: Renderer) { view.isPaused = true; view.delegate = nil }
 
     final class Renderer: NSObject, MTKViewDelegate {
