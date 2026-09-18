@@ -218,7 +218,7 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
                 if self.session.outputs.isEmpty {
                     self.output.alwaysDiscardsLateVideoFrames = true
                     let yuv = kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
-                    let pixelFormat = self.output.availableVideoCVPixelFormatTypes.contains(yuv) ? yuv : kCVPixelFormatType_32BGRA
+                    let pixelFormat = self.output.availableVideoPixelFormatTypes.contains(yuv) ? yuv : kCVPixelFormatType_32BGRA
                     self.output.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: pixelFormat]
                     self.output.setSampleBufferDelegate(self, queue: self.captureQueue)
                     guard self.session.canAddOutput(self.output) else {
