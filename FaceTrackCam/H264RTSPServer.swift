@@ -88,6 +88,7 @@ final class H264RTSPServer {
     }
 
     private func stopInternal() {
+        let hadListener = listener != nil
         running = false
         listener?.stateUpdateHandler = nil
         listener?.newConnectionHandler = nil
@@ -97,7 +98,7 @@ final class H264RTSPServer {
         clients.removeAll()
         reportViewers()
         encoder.stop()
-        reportStatus(false)
+        if hadListener { reportStatus(false) }
     }
 
     private func accept(_ connection: NWConnection) {
