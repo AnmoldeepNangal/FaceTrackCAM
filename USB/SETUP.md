@@ -16,7 +16,7 @@ Plug in the iPhone, open FacePull, and start streaming. Leave FacePull in the fo
 
 Use the complete **Wi-Fi · H.264** URL from Settings → Connect in a second saved OBS Media Source. This uses the iPhone IP and port 8554 directly. Keep phone and PC on the same LAN. For an unchanged iPhone IP, make a DHCP reservation in your router and keep the phone's private Wi-Fi address fixed for that network. The app cannot assign router addresses. A bare IP without the port, path, and saved access key is not a media URL.
 
-Save USB and Wi-Fi sources once; enable the one you need. USB always uses `127.0.0.1:18080`; Wi-Fi uses the reserved iPhone IP. Both use the same saved stream key.
+Save USB and Wi-Fi sources once; enable the one you need. USB H.264 uses `127.0.0.1:18554` (the legacy MJPEG and remote page use `127.0.0.1:18080`); Wi-Fi uses the reserved iPhone IP. Both H.264 sources use the same saved stream key.
 
 ## Remote control
 
@@ -37,7 +37,7 @@ FacePull supports iOS 17+; native Liquid Glass needs iOS 26, which iPhone 13 Pro
 
 ## Backgrounds and presets
 
-Custom opens a library without changing the background. Select an image or choose Photos. Long-press a thumbnail to favorite or remove it. Clear recents removes non-favorites; favorites stay. Presets save the lens, camera adjustments, tracking mode, background selection, mirroring, grid, and OLED setting. Loading a preset while live preserves the current quality.
+Custom opens a library without changing the background. Select an image or choose Photos. Long-press a thumbnail to favorite or remove it. Clear recents removes the recent-history entries; favorites, the active background, and saved presets stay. Presets save the lens, camera adjustments, tracking mode, background selection, mirroring, grid, and OLED setting. Loading a preset while live preserves the current quality.
 
 ## Disable startup
 
