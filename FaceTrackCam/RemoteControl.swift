@@ -8,10 +8,11 @@ extension CameraModel {
          "exposure": exposure, "exposureLocked": exposureLocked, "temperature": whiteBalanceTemperature,
          "whiteBalanceLocked": whiteBalanceLocked, "background": settings.background.rawValue, "mirror": settings.mirrorStream,
          "microphone": microphoneEnabled,
+         "selectedBackground": selectedBackgroundID?.uuidString ?? "",
          "cameras": cameras.map { ["id": $0.id, "name": $0.name] },
          "qualities": VideoQuality.allCases.map { ["id": $0.rawValue, "name": $0.label] },
          "presets": presets.map { ["id": $0.id.uuidString, "name": $0.name] },
-         "backgrounds": visibleBackgrounds.enumerated().map { asset in
+         "backgrounds": visibleBackgrounds.map { asset in
             ["id": asset.id.uuidString, "name": "Background", "thumb": asset.thumbnail?.jpegData(compressionQuality: 0.65)?.base64EncodedString() ?? ""]
          }]
     }

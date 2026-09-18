@@ -173,7 +173,60 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
                 DispatchQueue.main.async {
                     guard let self, self.desiredActive else { return }
                     if granted { self.discoverAndStart() }
-                    else { sel…708 tokens truncated…g {
+                    else { self.permissionDenied = true; self.error = "Allow camera access in Settings to use FaceTrackCam." }
+                }
+            }
+        default: permissionDenied = true; error = "Allow camera access in Settings to use FaceTrackCam."
+        }
+    }
+
+    func setMicrophoneEnabled(_ enabled: Bool) {
+        guard enabled else { microphoneEnabled = false; try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation); return }
+        switch AVAudioSession.sharedInstance().recordPermission {
+        case .granted: enableMicrophoneSession()
+        case .undetermined: AVAudioSession.sharedInstance().requestRecordPermission { [weak self] granted in DispatchQueue.main.async { if granted { self?.enableMicrophoneSession() } } }
+        case .denied: microphoneEnabled = false
+        @unknown default: microphoneEnabled = false
+        }
+    }
+
+    private func enableMicrophoneSession() {
+        do { let audio = AVAudioSession.sharedInstance(); try audio.setCategory(.record, mode: .videoRecording, options: [.allowBluetooth, .mixWithOthers]); try audio.setActive(true); microphoneEnabled = true }
+        catch { microphoneEnabled = false; report("Microphone could not be enabled.") }
+    }
+
+    func deactivate() {
+        desiredActive = false; ready = false
+        stopStream()
+        captureQueue.async {
+            if self.session.isRunning { self.session.stopRunning() }
+            self.preview.put(nil)
+            if let device = self.device, device.hasTorch, (try? device.lockForConfiguration()) != nil {
+                device.torchMode = .off; device.unlockForConfiguration()
+            }
+        }
+        torch = false
+    }
+
+    private func discoverAndStart() {
+        let devices = AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInWideAngleCamera, .builtInUltraWideCamera, .builtInTelephotoCamera], mediaType: .video, position: .unspecified).devices
+        cameras = devices.map { CameraChoice(id: $0.uniqueID, name: $0.localizedName, front: $0.position == .front) }
+        guard let choice = devices.first(where: { $0.uniqueID == selectedCamera }) ?? devices.first(where: { $0.position == .front }) ?? devices.first else {
+            error = "No camera is available on this device."; return
+        }
+        updateOrientation()
+        switchCamera(choice.uniqueID)
+    }
+
+    func switchCamera(_ id: String) {
+        ready = false
+        let bias = exposure
+        let locked = exposureLocked
+        let temperature = whiteBalanceTemperature
+        let whiteBalanceIsLocked = whiteBalanceLocked
+        let preset: AVCaptureSession.Preset = settings.quality == .ultra ? .hd1920x1080 : .hd1280x720
+        captureQueue.async {
+            if self.device?.uniqueID == id && self.session.isRunning {
                 DispatchQueue.main.async { self.ready = self.desiredActive }
                 return
             }

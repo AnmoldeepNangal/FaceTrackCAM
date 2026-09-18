@@ -1,5 +1,6 @@
 import SwiftUI
 import PhotosUI
+import UIKit
 
 private enum RemotePanel: String, CaseIterable, Identifiable {
     case face = "FaceTrack", background = "Background", exposure = "AE", whiteBalance = "WB", settings = "Settings"
