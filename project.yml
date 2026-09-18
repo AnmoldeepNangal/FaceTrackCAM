@@ -20,6 +20,7 @@ targets:
       path: FaceTrackCam/Info.plist
       properties:
         CFBundleDisplayName: FacePull
+        UILaunchScreen: {}
         NSCameraUsageDescription: "Use the camera for OBS streaming, face tracking, and background effects."
         NSLocalNetworkUsageDescription: "Stream to OBS and pair with another FacePull iPhone on your local network."
         NSBonjourServices:
@@ -35,6 +36,18 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         SUPPORTS_MACCATALYST: NO
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+  FacePullUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: UITests
+    dependencies:
+      - target: FaceTrackCam
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: FaceTrackCam
   StreamActivity:
     type: app-extension
     platform: iOS
@@ -61,4 +74,6 @@ schemes:
     build:
       targets:
         FaceTrackCam: all
-
+    test:
+      targets:
+        - FacePullUITests

@@ -24,6 +24,7 @@ final class H264RTSPServer {
     private let encoder = H264Encoder()
     private let deliveryGate = NSLock()
     private var deliveryPending = false
+    private var deliveryDropped = false
     private var hasViewers = false
     private var listener: NWListener?
     private var clients: [UUID: Client] = [:]
@@ -36,12 +37,24 @@ final class H264RTSPServer {
         encoder.onFrame = { [weak self] frame in
             guard let self else { return }
             self.deliveryGate.lock()
-            guard !self.deliveryPending else { self.deliveryGate.unlock(); return }
+            guard !self.deliveryPending else {
+                self.deliveryDropped = true
+                self.deliveryGate.unlock(); return
+            }
             self.deliveryPending = true
             self.deliveryGate.unlock()
             self.queue.async {
                 self.send(frame)
-                self.deliveryGate.lock(); self.deliveryPending = false; self.deliveryGate.unlock()
+                self.deliveryGate.lock()
+                let dropped = self.deliveryDropped
+                self.deliveryDropped = false; self.deliveryPending = false
+                self.deliveryGate.unlock()
+                if dropped {
+                    // A skipped encoded P-frame breaks the decoder's reference
+                    // chain. Resume with a fresh IDR, never with a dependent frame.
+                    self.clients.values.forEach { $0.awaitingKeyframe = true }
+                    self.encoder.requestKeyframe()
+                }
             }
         }
         encoder.onError = { [weak self] message in self?.report(message) }
@@ -281,4 +294,3 @@ private enum RTPH264 {
         return result
     }
 }
-

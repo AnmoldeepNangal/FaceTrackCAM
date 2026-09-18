@@ -16,6 +16,7 @@ final class H264Encoder {
 
     private let queue = DispatchQueue(label: "facepull.h264", qos: .userInitiated)
     private let context = CIContext(options: [.cacheIntermediates: false])
+    private let colorSpace = CGColorSpaceCreateDeviceRGB()
     private let admission = NSLock()
     private var session: VTCompressionSession?
     private var size = CGSize.zero
@@ -43,16 +44,16 @@ final class H264Encoder {
         // arbitrary backlog of stale CIImages retain camera buffers.
         admission.lock()
         guard admitted < 2 else { admission.unlock(); return }
+        let generation = self.generation
         admitted += 1
         admission.unlock()
         queue.async {
-            guard self.running, let session = self.session,
-                  let pool = VTCompressionSessionGetPixelBufferPool(session) else { self.releaseAdmission(); return }
+            guard self.running, self.generation == generation, let session = self.session,
+                  let pool = VTCompressionSessionGetPixelBufferPool(session) else { self.releaseAdmission(generation: generation); return }
             var buffer: CVPixelBuffer?
             guard CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pool, &buffer) == kCVReturnSuccess,
-                  let buffer else { self.releaseAdmission(); return }
-            self.context.render(image, to: buffer, bounds: CGRect(origin: .zero, size: self.size), colorSpace: CGColorSpaceCreateDeviceRGB())
-            let generation = self.generation
+                  let buffer else { self.releaseAdmission(generation: generation); return }
+            self.context.render(image, to: buffer, bounds: CGRect(origin: .zero, size: self.size), colorSpace: self.colorSpace)
             let duration = CMTime(seconds: 1 / self.frameRate, preferredTimescale: 90_000)
             let properties = self.forceKeyframe ? [kVTEncodeFrameOptionKey_ForceKeyFrame: kCFBooleanTrue] as CFDictionary : nil
             self.forceKeyframe = false
@@ -60,21 +61,23 @@ final class H264Encoder {
                 duration: duration, frameProperties: properties, infoFlagsOut: nil) { [weak self] status, _, sample in
                 guard let self else { return }
                 self.queue.async {
-                    self.releaseAdmission()
+                    self.releaseAdmission(generation: generation)
                     guard self.running, self.generation == generation, status == noErr, let sample,
                           let frame = Self.extract(sample) else { return }
                     self.onFrame?(frame)
                 }
             }
             if status != noErr {
-                self.releaseAdmission()
+                self.releaseAdmission(generation: generation)
                 self.onError?("H.264 encoder rejected a frame (\(status)).")
             }
         }
     }
 
-    private func releaseAdmission() {
-        admission.lock(); admitted = max(0, admitted - 1); admission.unlock()
+    private func releaseAdmission(generation: Int) {
+        admission.lock()
+        if generation == self.generation { admitted = max(0, admitted - 1) }
+        admission.unlock()
     }
 
     private func createSession() -> Bool {
@@ -117,7 +120,10 @@ final class H264Encoder {
 
     private func stopInternal() {
         running = false
+        admission.lock()
         generation += 1
+        admitted = 0
+        admission.unlock()
         forceKeyframe = false
         if let session { VTCompressionSessionInvalidate(session) }
         session = nil
@@ -161,4 +167,3 @@ final class H264Encoder {
         return Frame(nalUnits: units, timestamp: stamp, isKeyframe: key)
     }
 }
-

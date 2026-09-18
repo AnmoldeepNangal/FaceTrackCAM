@@ -76,6 +76,9 @@ struct CameraScreen: View {
     var body: some View {
         ZStack {
             preview.ignoresSafeArea()
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Camera preview")
+                .accessibilityIdentifier("camera.preview")
                 .contentShape(Rectangle()).onTapGesture { dismissTools() }
             if showGrid { framingGrid.ignoresSafeArea().allowsHitTesting(false) }
             VStack(spacing: 8) {
@@ -89,10 +92,12 @@ struct CameraScreen: View {
                 controls
             }.background(Color.clear)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .statusBarHidden().fontDesign(.default).tint(.white)
         .environment(\.colorScheme, .dark)
         .buttonStyle(LiquidGlassButtonStyle())
         .onAppear { camera.activate(); updateIconAngle() }
+        .onDisappear { camera.deactivate() }
         .onReceive(NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)) { _ in updateIconAngle() }
         .onChange(of: phase) { _, value in
             if value == .active { camera.activate() } else if value == .background { camera.deactivate() }
@@ -138,15 +143,18 @@ struct CameraScreen: View {
                 }
             } label: {
                 Image(systemName: camera.oledSaverEnabled ? "moon.fill" : "moon")
-                    .font(.system(size: 18, weight: .medium)).frame(width: 44, height: 44)
+                    .font(.system(size: 17, weight: .semibold)).rotationEffect(iconAngle)
+                    .frame(width: 44, height: 44)
                     .glassCapsule()
             }
             .onChange(of: camera.oledSaverEnabled) { _, _ in FaceTrackHaptics.tap() }
             .foregroundStyle(camera.oledSaverEnabled ? Color("mijick-background-yellow") : .white)
             .accessibilityLabel("OLED saver")
+            .accessibilityIdentifier("camera.oled")
             .accessibilityValue(camera.oledSaverEnabled ? "Auto, 30 seconds" : "Off")
         }
         .padding(.horizontal, 24)
+        .padding(.top, 8)
     }
 
     private var preview: some View {
@@ -462,4 +470,3 @@ struct CameraScreen: View {
         }
     }
 }
-

@@ -40,14 +40,23 @@ struct ProcessedPreview: UIViewRepresentable {
         var mirrored = false
         private lazy var commandQueue = device?.makeCommandQueue()
         private lazy var context: CIContext? = device.map { CIContext(mtlDevice: $0, options: [.cacheIntermediates: false]) }
+        private let colorSpace = CGColorSpaceCreateDeviceRGB()
+        private let inFlight = DispatchSemaphore(value: 1)
+        private weak var lastImage: CIImage?
+        private var lastSize = CGSize.zero
+        private var lastMirrored = false
         init(frames: PreviewFrames) { self.frames = frames }
         func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
         func draw(in view: MTKView) {
-            guard var image = frames.latest(), let drawable = view.currentDrawable,
-                  let command = commandQueue?.makeCommandBuffer(), let context else { return }
-            if mirrored { image = image.transformed(by: .init(a: -1, b: 0, c: 0, d: 1, tx: image.extent.width, ty: 0)) }
+            guard let source = frames.latest() else { return }
             let size = view.drawableSize
-            guard size.width > 0, size.height > 0 else { return }
+            guard size.width > 0, size.height > 0,
+                  source !== lastImage || size != lastSize || mirrored != lastMirrored,
+                  inFlight.wait(timeout: .now()) == .success else { return }
+            guard let drawable = view.currentDrawable,
+                  let command = commandQueue?.makeCommandBuffer(), let context else { inFlight.signal(); return }
+            var image = source
+            if mirrored { image = image.transformed(by: .init(a: -1, b: 0, c: 0, d: 1, tx: image.extent.width, ty: 0)) }
             // The camera pipeline stays landscape for OBS. Rotate only the local
             // preview when the portrait-locked UI is taller than it is wide so a
             // horizontal sensor frame is shown in full instead of being cropped.
@@ -59,9 +68,11 @@ struct ProcessedPreview: UIViewRepresentable {
             image = image.transformed(by: .init(translationX: (size.width - image.extent.width) / 2, y: (size.height - image.extent.height) / 2))
             let bounds = CGRect(origin: .zero, size: size)
             image = image.composited(over: CIImage(color: .black).cropped(to: bounds))
-            context.render(image, to: drawable.texture, commandBuffer: command, bounds: bounds, colorSpace: CGColorSpaceCreateDeviceRGB())
+            context.render(image, to: drawable.texture, commandBuffer: command, bounds: bounds, colorSpace: colorSpace)
+            lastImage = source; lastSize = size; lastMirrored = mirrored
+            let gate = inFlight
+            command.addCompletedHandler { _ in gate.signal() }
             command.present(drawable); command.commit()
         }
     }
 }
-

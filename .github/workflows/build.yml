@@ -41,6 +41,20 @@ jobs:
           test -d "$APP/PlugIns/StreamActivity.appex"
           test "$(/usr/libexec/PlistBuddy -c 'Print :NSSupportsLiveActivities' "$APP/Info.plist")" = true
           test "$(/usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' "$APP/PlugIns/StreamActivity.appex/Info.plist")" = com.apple.widgetkit-extension
+      - name: Verify full-screen launch configuration
+        run: |
+          /usr/libexec/PlistBuddy -c 'Print :UILaunchScreen' derived_data/Build/Products/Release-iphoneos/FaceTrackCam.app/Info.plist
+      - name: Test full-screen layout on iPhone 13 Pro and iPhone 17 Pro Max
+        run: |
+          set -o pipefail
+          RUNTIME=$(xcrun simctl list runtimes -j | python3 -c 'import json,sys; print(next(r["identifier"] for r in reversed(json.load(sys.stdin)["runtimes"]) if r["isAvailable"] and "iOS" in r["identifier"]))')
+          for MODEL in iPhone-13-Pro iPhone-17-Pro-Max; do
+            DEVICE=$(xcrun simctl create "FacePull-$MODEL" "com.apple.CoreSimulator.SimDeviceType.$MODEL" "$RUNTIME")
+            xcrun simctl boot "$DEVICE"
+            xcrun simctl bootstatus "$DEVICE" -b
+            xcodebuild test -project FaceTrackCam.xcodeproj -scheme FaceTrackCam -destination "platform=iOS Simulator,id=$DEVICE" -parallel-testing-enabled NO -only-testing:FacePullUITests -resultBundlePath "layout-$MODEL.xcresult" CODE_SIGNING_ALLOWED=NO -derivedDataPath simulator_data | tee "layout-$MODEL.log"
+            xcrun simctl shutdown "$DEVICE"
+          done
       - name: Verify app icon source and bundle
         run: |
           ICON=FaceTrackCam/Assets/Icons.xcassets/AppIcon.appiconset/FacePull.png
@@ -69,4 +83,5 @@ jobs:
           path: |
             build.log
             simulator-build.log
-
+            layout-*.log
+            layout-*.xcresult

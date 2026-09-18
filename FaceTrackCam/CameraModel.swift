@@ -120,7 +120,7 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
             self.updateMonitor()
         }
         remoteStateTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
-            guard let self else { return }
+            guard let self, self.peer.authorized else { return }
             self.peer.publish(self.remoteState())
         }
         observe(UIDevice.orientationDidChangeNotification, object: nil) { [weak self] _ in self?.updateOrientation() }
@@ -196,6 +196,8 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         ready = false
         let bias = exposure
         let locked = exposureLocked
+        let temperature = whiteBalanceTemperature
+        let whiteBalanceIsLocked = whiteBalanceLocked
         let preset: AVCaptureSession.Preset = settings.quality == .ultra ? .hd1920x1080 : .hd1280x720
         captureQueue.async {
             if self.device?.uniqueID == id && self.session.isRunning {
@@ -238,7 +240,7 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
                 if candidate.hasTorch { candidate.torchMode = .off }
                 candidate.unlockForConfiguration()
                 self.applyExposure(bias: bias, locked: locked)
-                self.applyWhiteBalance(temperature: self.whiteBalanceTemperature, locked: self.whiteBalanceLocked)
+                self.applyWhiteBalance(temperature: temperature, locked: whiteBalanceIsLocked)
                 self.processor.reset(); self.preview.put(nil)
                 if !self.session.isRunning { self.session.startRunning() }
                 let running = self.session.isRunning
@@ -455,7 +457,10 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
 
     private func updateOrientation() {
         let newOrientation: AVCaptureVideoOrientation = .landscapeRight
-        captureQueue.async { self.orientation = newOrientation; self.applyOrientation(); self.processor.reset() }
+        captureQueue.async {
+            guard self.orientation != newOrientation else { return }
+            self.orientation = newOrientation; self.applyOrientation(); self.processor.reset()
+        }
     }
 
     private func applyOrientation() {
@@ -585,4 +590,3 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         return nil
     }
 }
-
