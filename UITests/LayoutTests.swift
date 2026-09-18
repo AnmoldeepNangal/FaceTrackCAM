@@ -4,7 +4,7 @@ final class LayoutTests: XCTestCase {
     func testPreviewUsesFullDisplayAndControlsStayInsideIt() {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments = ["-appMode", "host"]
+        app.launchArguments = ["-appMode", "host", "--layout-test"]
         app.launch()
         // The simulator has no camera. Dismiss only its permission/error alerts.
         if app.alerts.firstMatch.waitForExistence(timeout: 3) {
@@ -14,7 +14,7 @@ final class LayoutTests: XCTestCase {
         }
         if app.alerts.buttons["OK"].waitForExistence(timeout: 2) { app.alerts.buttons["OK"].tap() }
 
-        let preview = app.otherElements["camera.preview"]
+        let preview = app.descendants(matching: .any)["camera.preview"]
         XCTAssertTrue(preview.waitForExistence(timeout: 10))
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = "Full-screen camera and safe-area controls"
@@ -22,6 +22,7 @@ final class LayoutTests: XCTestCase {
         add(attachment)
         let screen = XCUIScreen.main.screenshot().image.size
         let frame = preview.frame
+        print("Rendered preview: \(frame); application: \(app.frame); screen pixels: \(screen)")
         XCTAssertEqual(frame.width / frame.height, screen.width / screen.height, accuracy: 0.005,
                        "Preview or application window is letterboxed")
         XCTAssertEqual(frame.minX, 0, accuracy: 1)

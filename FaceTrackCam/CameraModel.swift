@@ -155,6 +155,15 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
 
     func activate() {
         desiredActive = true
+#if targetEnvironment(simulator)
+        // Exercise the real Metal preview/layout in UI tests without camera hardware.
+        if ProcessInfo.processInfo.arguments.contains("--layout-test") {
+            preview.put(CIImage(color: CIColor(red: 0.2, green: 0.45, blue: 0.65))
+                .cropped(to: CGRect(origin: .zero, size: settings.outputSize)))
+            ready = true
+            return
+        }
+#endif
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized: permissionDenied = false; discoverAndStart()
         case .notDetermined:

@@ -18,6 +18,9 @@ struct ProcessedPreview: UIViewRepresentable {
     func makeCoordinator() -> Renderer { Renderer(frames: frames) }
     func makeUIView(context: Context) -> MTKView {
         let view = MTKView(frame: .zero, device: context.coordinator.device)
+        view.isAccessibilityElement = true
+        view.accessibilityLabel = "Camera preview"
+        view.accessibilityIdentifier = "camera.preview"
         view.framebufferOnly = false
         view.colorPixelFormat = .bgra8Unorm
         view.preferredFramesPerSecond = 30

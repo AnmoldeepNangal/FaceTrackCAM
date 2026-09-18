@@ -170,9 +170,6 @@ struct CameraScreen: View {
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
             .clipped()
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Camera preview")
-            .accessibilityIdentifier("camera.preview")
         }
     }
 
