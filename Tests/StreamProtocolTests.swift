@@ -4,32 +4,27 @@ import XCTest
 final class StreamProtocolTests: XCTestCase {
     private func parse(_ request: String) -> HTTPRequestResult { StreamProtocol.parse(Data(request.utf8), token: "secret") }
     func testFragmentedRequestWaitsForHeaderTerminator() {
-        XCTAssertEqual(parse("GET /stream.mjpg?token=secret HTTP/1.1\r\nHost: phone\r\n"), .incomplete)
-        XCTAssertEqual(parse("GET /stream.mjpg?token=secret HTTP/1.1\r\nHost: phone\r\n\r\n"), .route("/stream.mjpg"))
+        XCTAssertEqual(parse("GET /status?token=secret HTTP/1.1\r\nHost: phone\r\n"), .incomplete)
+        XCTAssertEqual(parse("GET /status?token=secret HTTP/1.1\r\nHost: phone\r\n\r\n"), .route("/status"))
     }
     func testAllRoutesRequireCurrentToken() {
-        for route in ["/stream.mjpg", "/view", "/status"] {
+        for route in ["/status"] {
             XCTAssertEqual(parse("GET \(route) HTTP/1.1\r\n\r\n"), .rejected(403))
             XCTAssertEqual(parse("GET \(route)?token=old HTTP/1.1\r\n\r\n"), .rejected(403))
             XCTAssertEqual(parse("GET \(route)?token=secret HTTP/1.1\r\n\r\n"), .route(route))
         }
     }
     func testRejectsDuplicateTokensAndUnknownRoutes() {
-        XCTAssertEqual(parse("GET /view?token=wrong&token=secret HTTP/1.1\r\n\r\n"), .rejected(403))
+        XCTAssertEqual(parse("GET /status?token=wrong&token=secret HTTP/1.1\r\n\r\n"), .rejected(403))
         XCTAssertEqual(parse("GET /missing?token=secret HTTP/1.1\r\n\r\n"), .rejected(404))
+        XCTAssertEqual(parse("GET /stream.mjpg?token=secret HTTP/1.1\r\n\r\n"), .rejected(404))
     }
     func testRejectsMalformedAndOversizedRequests() {
-        XCTAssertEqual(parse("POST /view?token=secret HTTP/1.1\r\n\r\n"), .rejected(405))
+        XCTAssertEqual(parse("POST /status?token=secret HTTP/1.1\r\n\r\n"), .rejected(405))
         XCTAssertEqual(parse("garbage\r\n\r\n"), .rejected(400))
-        XCTAssertEqual(parse("GET //evil/view?token=secret HTTP/1.1\r\n\r\n"), .rejected(400))
+        XCTAssertEqual(parse("GET //evil/status?token=secret HTTP/1.1\r\n\r\n"), .rejected(400))
         XCTAssertEqual(parse(String(repeating: "x", count: 8193)), .rejected(431))
     }
-    func testMultipartContainsExactLengthAndBytes() {
-        let jpeg = Data([0xff, 0xd8, 0xff, 0xd9])
-        let expected = Data("--facetrack-frame\r\nContent-Type: image/jpeg\r\nContent-Length: 4\r\n\r\n".utf8) + jpeg + Data("\r\n".utf8)
-        XCTAssertEqual(StreamProtocol.frame(jpeg), expected)
-    }
-
     func testRemoteCredentialsAndFragmentedCommands() {
         func remote(_ request: String) -> HTTPRequestResult {
             StreamProtocol.parse(Data(request.utf8), token: "video", remoteToken: "control")

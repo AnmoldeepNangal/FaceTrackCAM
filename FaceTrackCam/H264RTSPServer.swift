@@ -18,6 +18,7 @@ final class H264RTSPServer {
     }
 
     var onError: ((String) -> Void)?
+    var onStatus: ((Bool, String?) -> Void)?
     var onViewers: ((Int) -> Void)?
     private let queue = DispatchQueue(label: "facepull.rtsp", qos: .userInitiated)
     private let encoder = H264Encoder()
@@ -59,8 +60,12 @@ final class H264RTSPServer {
                 listener.stateUpdateHandler = { [weak self, weak listener] state in
                     guard let self, let listener, self.listener === listener else { return }
                     switch state {
-                    case .ready: self.running = true
-                    case .failed(let error): self.report("RTSP server stopped: \(error.localizedDescription)"); self.stopInternal()
+                    case .ready:
+                        self.running = true
+                        self.reportStatus(true)
+                    case .failed(let error):
+                        self.stopInternal()
+                        self.reportStatus(false, error: "RTSP server stopped: \(error.localizedDescription)")
                     default: break
                     }
                 }
@@ -70,7 +75,7 @@ final class H264RTSPServer {
                 timer.schedule(deadline: .now() + 5, repeating: 5)
                 timer.setEventHandler { [weak self] in self?.expireClients() }
                 timer.resume(); self.timer = timer
-            } catch { self.report("RTSP server could not start: \(error.localizedDescription)") }
+            } catch { self.reportStatus(false, error: "RTSP server could not start: \(error.localizedDescription)") }
         }
     }
 
@@ -92,6 +97,7 @@ final class H264RTSPServer {
         clients.removeAll()
         reportViewers()
         encoder.stop()
+        reportStatus(false)
     }
 
     private func accept(_ connection: NWConnection) {
@@ -227,6 +233,10 @@ final class H264RTSPServer {
 
     private func report(_ message: String) {
         DispatchQueue.main.async { [weak self] in self?.onError?(message) }
+    }
+
+    private func reportStatus(_ active: Bool, error: String? = nil) {
+        DispatchQueue.main.async { [weak self] in self?.onStatus?(active, error) }
     }
 }
 

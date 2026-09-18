@@ -23,7 +23,6 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
     @Published private(set) var starting = false
     @Published private(set) var streaming = false
     @Published private(set) var viewers = 0
-    private var jpegViewers = 0
     private var h264Viewers = 0
     @Published private(set) var streamStarted: Date?
     @Published private(set) var token = CameraLibrary.stableSecret("streamKey")
@@ -93,6 +92,18 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         server.onRemoteCommand = { [weak self] command in self?.applyRemote(command) }
         peer.onCommand = { [weak self] command in self?.applyRemote(command) }
         rtsp.onError = { [weak self] message in self?.error = message }
+        rtsp.onStatus = { [weak self] running, error in
+            guard let self else { return }
+            self.starting = false
+            if running && !self.streaming { self.streamStarted = Date() }
+            self.streaming = running
+            if !running { self.streamStarted = nil }
+            self.oledState.setStreaming(running, now: ProcessInfo.processInfo.systemUptime)
+            self.syncOLEDSaver()
+            self.liveActivity.setStreaming(running, since: self.streamStarted)
+            self.updateIdleTimer()
+            if let error { self.error = error }
+        }
         rtsp.onViewers = { [weak self] count in
             guard let self else { return }
             self.h264Viewers = count
@@ -100,19 +111,7 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         }
         server.onStatus = { [weak self] status in
             guard let self else { return }
-            self.starting = false
-            if status.running && !self.streaming {
-                self.streamStarted = Date()
-            }
-            self.streaming = status.running
-            self.jpegViewers = status.clients
-            self.updateViewers()
-            if !status.running { self.streamStarted = nil }
-            self.oledState.setStreaming(status.running, now: ProcessInfo.processInfo.systemUptime)
-            self.syncOLEDSaver()
-            self.liveActivity.setStreaming(status.running, since: self.streamStarted)
             if let error = status.error { self.error = error }
-            self.updateIdleTimer()
         }
         UIDevice.current.isBatteryMonitoringEnabled = true
         UIDevice.current.beginGeneratingDeviceOrientationNotifications()
@@ -484,8 +483,6 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         rtsp.stop()
     }
 
-    var wifiURL: String? { wifiAddress.map { "http://\($0):8080/stream.mjpg?token=\(token)" } }
-    var usbURL: String { "http://127.0.0.1:18080/stream.mjpg?token=\(token)" }
     var wifiH264URL: String? { wifiAddress.map { "rtsp://\($0):8554/facepull?token=\(token)" } }
     var usbH264URL: String { "rtsp://127.0.0.1:18554/facepull?token=\(token)" }
 
@@ -505,7 +502,7 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
     }
 
     private func updateViewers() {
-        let count = jpegViewers + h264Viewers
+        let count = h264Viewers
         if connectionAlerts && streaming && count != viewers {
             UINotificationFeedbackGenerator().notificationOccurred(count > viewers ? .success : .warning)
         }
@@ -555,7 +552,7 @@ final class CameraModel: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
                 // CIImage retains its source buffer. Keep only the latest preview;
                 // each encoder owns its own bounded admission instead of forcing a
                 // GPU readback and a second upload on the capture queue.
-                preview.put(image); server.offer(image)
+                preview.put(image)
                 rtsp.offer(image, time: CMSampleBufferGetPresentationTimeStamp(sampleBuffer))
                 statsFrames += 1
                 if time - statsTime >= 1 {

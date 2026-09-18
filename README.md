@@ -2,8 +2,7 @@
 
 FacePull is an iOS 17+ camera app for OBS. It captures with AVFoundation, applies
 Vision face framing and optional person-background effects, and displays the
-processed result locally. It has an H.264 RTSP stream for OBS, plus the older MJPEG
-stream as a compatibility path. A second iPhone can run FacePull in Remote Control
+processed result locally. It has an H.264 RTSP stream for OBS. A second iPhone can run FacePull in Remote Control
 mode without viewing video.
 
 ## Validation
@@ -25,8 +24,6 @@ with the user's normal iPhone installation process.
    2 MB live-video buffer. Set input format to `rtsp` and FFmpeg options to
    `rtsp_transport=tcp fflags=nobuffer flags=low_delay` if OBS exposes those fields.
    Save the source.
-4. If RTSP does not work with the installed OBS version, use the labeled MJPEG
-   compatibility URL with input format `mpjpeg` while diagnosing the cause.
 
 The iPhone's raw IP alone is not an OBS media URL. Reserve the iPhone's Wi-Fi
 address in the router for a stable saved source. The access key persists across
@@ -36,8 +33,8 @@ select a microphone separately in OBS.
 ## OBS over USB on Windows
 
 See [USB/SETUP.md](USB/SETUP.md). The bridge forwards the H.264 RTSP service to
-`rtsp://127.0.0.1:18554/facepull?token=SAVED_KEY` and the MJPEG fallback to
-`http://127.0.0.1:18080/stream.mjpg?token=SAVED_KEY`. The source can be saved once.
+`rtsp://127.0.0.1:18554/facepull?token=SAVED_KEY`. The source can be saved once.
+The separate HTTP port remains available for browser remote control.
 The bridge requires Apple's installed Mobile Device service and trusted USB pairing.
 Physical USB and OBS reconnect behavior still require acceptance testing.
 

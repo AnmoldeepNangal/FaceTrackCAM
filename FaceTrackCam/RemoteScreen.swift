@@ -24,10 +24,11 @@ struct RemoteScreen: View {
     @StateObject private var peer = PeerControl(role: .remote)
     @State private var code = ""
     @State private var panel: RemotePanel?
+    @State private var focusedPanel: RemotePanel?
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea().onTapGesture { withAnimation(.spring()) { panel = nil } }
+            Color.black.ignoresSafeArea().onTapGesture { withAnimation(.spring()) { panel = nil; focusedPanel = nil } }
             VStack(spacing: 16) {
                 HStack {
                     Button { mode = "host" } label: { Label("Host", systemImage: "camera") }
@@ -40,14 +41,22 @@ struct RemoteScreen: View {
                     if let panel { controls(panel) }
                     HStack(spacing: 8) {
                         ForEach(RemotePanel.allCases) { item in
-                            Button { withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                                panel = panel == item ? nil : item
+                            Button { withAnimation(.interpolatingSpring(stiffness: 300, damping: 20)) {
+                                if focusedPanel == item { panel = panel == item ? nil : item }
+                                else { focusedPanel = item; panel = nil }
                             } } label: {
                                 Image(systemName: item.symbol).font(.system(size: 18, weight: .semibold))
                                     .frame(width: 44, height: 44)
                                     .background(.ultraThinMaterial, in: Capsule())
-                                    .foregroundStyle(panel == item ? .blue : .white)
-                            }.accessibilityLabel(item.rawValue)
+                                    .background(panel == item ? Color.white.opacity(0.55) : .clear, in: Capsule())
+                                    .foregroundStyle(panel == item ? Color.black : Color.white)
+                                    .scaleEffect(panel == item ? 1.3 : focusedPanel == item ? 1.15 : focusedPanel == nil ? 1 : panel == nil ? 0.9 : 0.8)
+                                    .frame(width: 44, height: 44)
+                            }
+                            .blur(radius: panel != nil && panel != item ? 1.5 : 0)
+                            .opacity(panel != nil && panel != item ? 0.55 : 1)
+                            .zIndex(focusedPanel == item ? 1 : 0)
+                            .accessibilityLabel(item.rawValue)
                         }
                     }
                     Button {
@@ -130,7 +139,7 @@ struct RemoteScreen: View {
                         }
                     } label: { row("Quality", value: text("quality"), icon: "video") }
                     Toggle("Mirror stream", isOn: Binding(get: { peer.state["mirror"] as? Bool ?? false },
-                        set: { peer.command("mirror", value: $0) })).padding(12).background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+                        set: { peer.command("mirror", value: $0) })).tint(.blue).padding(12).background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
                     ForEach(items("presets"), id: \.id) { item in
                         Button { peer.command("preset", value: item.id) } label: { row(item.name, value: "Apply", icon: "slider.horizontal.3") }
                     }
@@ -143,7 +152,7 @@ struct RemoteScreen: View {
                             range: ClosedRange<Float>, defaultValue: Float, step: Float) -> some View {
         HStack(spacing: 16) {
             Toggle(title, isOn: Binding(get: { peer.state[enabled] as? Bool ?? false },
-                set: { peer.command(enabled, value: $0) })).labelsHidden()
+                set: { peer.command(enabled, value: $0) })).labelsHidden().tint(.blue)
                 .onChange(of: peer.state[enabled] as? Bool) { _, _ in FaceTrackHaptics.tap() }
             NativeMagneticSlider(value: Binding(get: { (peer.state[action] as? NSNumber).map { Float(truncating: $0) } ?? defaultValue },
                 set: {

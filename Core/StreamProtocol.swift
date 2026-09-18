@@ -7,7 +7,6 @@ enum HTTPRequestResult: Equatable {
 }
 
 enum StreamProtocol {
-    static let boundary = "facetrack-frame"
     static let maximumHeaderBytes = 8192
 
     static func parse(_ data: Data, token: String, remoteToken: String? = nil) -> HTTPRequestResult {
@@ -26,7 +25,7 @@ enum StreamProtocol {
         let tokens = url.queryItems?.filter { $0.name == "token" } ?? []
         guard let expected = remote ? remoteToken : token,
               tokens.count == 1, tokens[0].value == expected else { return .rejected(403) }
-        guard ["/stream.mjpg", "/view", "/status", "/remote/state", "/remote/control"].contains(url.path) else { return .rejected(404) }
+        guard ["/status", "/remote/state", "/remote/control"].contains(url.path) else { return .rejected(404) }
         if url.path == "/remote/control" {
             let lines = text.components(separatedBy: "\r\n\r\n")[0].components(separatedBy: "\r\n").dropFirst()
             let lengths = lines.filter { $0.lowercased().hasPrefix("content-length:") }
@@ -46,12 +45,5 @@ enum StreamProtocol {
         return Data("HTTP/1.1 \(status) \(reason)\r\nContent-Type: \(type)\r\nContent-Length: \(body.count)\r\nCache-Control: no-store\r\nConnection: close\r\nX-Content-Type-Options: nosniff\r\n\r\n".utf8) + body
     }
 
-    static var streamHeader: Data {
-        Data("HTTP/1.1 200 OK\r\nContent-Type: multipart/x-mixed-replace; boundary=\(boundary)\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n".utf8)
-    }
-
-    static func frame(_ jpeg: Data) -> Data {
-        Data("--\(boundary)\r\nContent-Type: image/jpeg\r\nContent-Length: \(jpeg.count)\r\n\r\n".utf8) + jpeg + Data("\r\n".utf8)
-    }
 }
 

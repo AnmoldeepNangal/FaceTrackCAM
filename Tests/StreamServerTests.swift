@@ -1,11 +1,9 @@
 import XCTest
 import Foundation
-import Network
-import CoreImage
 @testable import FaceTrackCore
 
 final class StreamServerTests: XCTestCase {
-    func testRealHTTPAndJPEGStreamLifecycle() throws {
+    func testRealHTTPRemoteLifecycle() throws {
         let server = StreamServer()
         let started = expectation(description: "listener ready")
         var didStart = false
@@ -29,7 +27,7 @@ final class StreamServerTests: XCTestCase {
         }
 
         for (path, status) in [("/status?token=integration-token", 200), ("/status?token=wrong", 403),
-                               ("/missing?token=integration-token", 404), ("/view?token=integration-token", 200)] {
+                               ("/missing?token=integration-token", 404), ("/stream.mjpg?token=integration-token", 404)] {
             let done = expectation(description: path)
             let url = try XCTUnwrap(URL(string: "http://127.0.0.1:8080" + path))
             URLSession.shared.dataTask(with: url) { data, response, error in
@@ -56,40 +54,6 @@ final class StreamServerTests: XCTestCase {
             wait(for: [done], timeout: 10)
             XCTAssertEqual(remoteApplied, key == "remote-secret")
         }
-
-        let gotFrame = expectation(description: "received multipart JPEG")
-        let disconnected = expectation(description: "viewer removed")
-        var sawViewer = false
-        server.onStatus = { status in
-            if status.clients == 1 {
-                sawViewer = true
-                server.offer(CIImage(color: CIColor(red: 1, green: 0, blue: 0)).cropped(to: CGRect(x: 0, y: 0, width: 1280, height: 720)))
-            } else if sawViewer && status.clients == 0 { disconnected.fulfill() }
-        }
-        let client = NWConnection(host: "127.0.0.1", port: 8080, using: .tcp)
-        let queue = DispatchQueue(label: "test.client")
-        var received = Data()
-        func receive() {
-            client.receive(minimumIncompleteLength: 1, maximumLength: 65536) { data, _, complete, error in
-                XCTAssertNil(error)
-                if let data { received.append(data) }
-                if received.range(of: Data([0xff, 0xd9])) != nil {
-                    XCTAssertNotNil(received.range(of: Data("--facetrack-frame\r\nContent-Type: image/jpeg".utf8)))
-                    XCTAssertNotNil(received.range(of: Data([0xff, 0xd8])))
-                    gotFrame.fulfill(); client.cancel()
-                } else if !complete { receive() }
-                else { XCTFail("Stream closed before a JPEG arrived"); gotFrame.fulfill() }
-            }
-        }
-        client.stateUpdateHandler = { state in
-            if case .ready = state {
-                client.send(content: Data("GET /stream.mjpg?token=integration-token HTTP/1.1\r\nHost: localhost\r\n\r\n".utf8), completion: .contentProcessed { error in XCTAssertNil(error) })
-                receive()
-            }
-        }
-        client.start(queue: queue)
-        wait(for: [gotFrame, disconnected], timeout: 15)
-        client.cancel()
     }
 }
 

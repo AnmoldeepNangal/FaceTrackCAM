@@ -130,12 +130,15 @@ struct CameraScreen: View {
                 .font(.system(size: 19, weight: .medium)).rotationEffect(iconAngle).accessibilityLabel("Battery")
             Spacer(minLength: 0)
             Menu {
-                Picker("OLED saver", selection: $camera.oledSaverEnabled) {
-                    Text("Off").tag(false)
-                    Text("Auto · 30s").tag(true)
+                Button("Auto · 30s", systemImage: camera.oledSaverEnabled ? "checkmark" : "moon.zzz") {
+                    camera.oledSaverEnabled = true
+                }
+                Button("Off", systemImage: camera.oledSaverEnabled ? "moon" : "checkmark") {
+                    camera.oledSaverEnabled = false
                 }
             } label: {
-                Image(systemName: camera.oledSaverEnabled ? "moon.fill" : "moon").frame(width: 44, height: 44).rotationEffect(iconAngle)
+                Image(systemName: camera.oledSaverEnabled ? "moon.fill" : "moon")
+                    .font(.system(size: 18, weight: .medium)).frame(width: 44, height: 44)
                     .glassCapsule()
             }
             .onChange(of: camera.oledSaverEnabled) { _, _ in FaceTrackHaptics.tap() }
@@ -147,12 +150,22 @@ struct CameraScreen: View {
     }
 
     private var preview: some View {
-        ZStack {
-            Color.black
-            if camera.ready { ProcessedPreview(frames: camera.preview, mirrored: camera.frontCamera && camera.mirrorPreview != camera.settings.mirrorStream, paused: camera.dimmed) }
-            else { Image(systemName: camera.permissionDenied ? "camera.fill" : "camera").font(.largeTitle).foregroundStyle(.secondary) }
+        GeometryReader { geometry in
+            ZStack {
+                Color.black
+                if camera.ready {
+                    ProcessedPreview(frames: camera.preview,
+                        mirrored: camera.frontCamera && camera.mirrorPreview != camera.settings.mirrorStream,
+                        paused: camera.dimmed)
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                } else {
+                    Image(systemName: camera.permissionDenied ? "camera.fill" : "camera")
+                        .font(.largeTitle).foregroundStyle(.secondary)
+                }
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            .clipped()
         }
-        .clipped().frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var controls: some View {
@@ -171,12 +184,14 @@ struct CameraScreen: View {
                     } label: {
                         Image(systemName: tool.icon).font(.system(size: 17, weight: .semibold)).rotationEffect(iconAngle)
                             .frame(width: 44, height: 44)
-                            .glassCapsule(tint: panel == tool ? .black.opacity(0.35) : focusedTool == tool ? .white.opacity(0.45) : .clear)
+                            .glassCapsule(tint: panel == tool ? .white.opacity(0.55) : .clear)
                             .scaleEffect(pillScale(for: tool))
                             .frame(width: 44, height: 44)
                             .contentShape(Rectangle())
                     }
-                    .foregroundStyle(focusedTool == tool && panel != tool ? Color.black : Color.white)
+                    .foregroundStyle(panel == tool ? Color.black : Color.white)
+                    .blur(radius: panel != nil && panel != tool ? 1.5 : 0)
+                    .opacity(panel != nil && panel != tool ? 0.55 : 1)
                     .zIndex(focusedTool == tool ? 1 : 0)
                     .shadow(color: .white.opacity(panel == tool ? 0.3 : 0), radius: 8)
                     .accessibilityLabel(tool.rawValue)
@@ -261,6 +276,7 @@ struct CameraScreen: View {
                            range: ClosedRange<Float>, center: Float, step: Float) -> some View {
         HStack(spacing: 16) {
             Toggle(label, isOn: enabled).labelsHidden().fixedSize()
+                .tint(.blue)
                 .onChange(of: enabled.wrappedValue) { _, _ in FaceTrackHaptics.tap() }
             NativeMagneticSlider(value: value, range: range, defaultValue: center, step: step)
                 .accessibilityLabel(label + " adjustment")
@@ -355,13 +371,13 @@ struct CameraScreen: View {
                     }
                 } label: { settingRow("Quality", camera.settings.quality.label, "sparkles.tv") }
                     .padding(8).liquidGlass(cornerRadius: 16).disabled(camera.streaming || camera.starting)
-                Toggle("Grid", isOn: $showGrid).padding(8).liquidGlass(cornerRadius: 16)
+                Toggle("Grid", isOn: $showGrid).tint(.blue).padding(8).liquidGlass(cornerRadius: 16)
                     .onChange(of: showGrid) { _, _ in FaceTrackHaptics.tap() }
-                Toggle("Mirror selfie", isOn: $camera.mirrorPreview).padding(8).liquidGlass(cornerRadius: 16)
+                Toggle("Mirror selfie", isOn: $camera.mirrorPreview).tint(.blue).padding(8).liquidGlass(cornerRadius: 16)
                     .onChange(of: camera.mirrorPreview) { _, _ in FaceTrackHaptics.tap() }
-                Toggle("Mirror stream", isOn: $camera.settings.mirrorStream).padding(8).liquidGlass(cornerRadius: 16)
+                Toggle("Mirror stream", isOn: $camera.settings.mirrorStream).tint(.blue).padding(8).liquidGlass(cornerRadius: 16)
                     .onChange(of: camera.settings.mirrorStream) { _, _ in FaceTrackHaptics.tap() }
-                Toggle("Connection haptics", isOn: $camera.connectionAlerts).padding(8).liquidGlass(cornerRadius: 16)
+                Toggle("Connection haptics", isOn: $camera.connectionAlerts).tint(.blue).padding(8).liquidGlass(cornerRadius: 16)
                     .onChange(of: camera.connectionAlerts) { _, _ in FaceTrackHaptics.tap() }
                 LabeledContent("Remote pairing", value: camera.peer.pairingCode)
                     .padding(12).liquidGlass(cornerRadius: 16)
@@ -400,8 +416,6 @@ struct CameraScreen: View {
             LabeledContent("Viewers", value: "\(camera.viewers)")
             if let url = camera.wifiH264URL { compactURLRow("Wi‑Fi · H.264", url) }
             compactURLRow("USB · H.264", camera.usbH264URL)
-            if let url = camera.wifiURL { compactURLRow("Wi‑Fi · compatibility", url) }
-            compactURLRow("USB · compatibility", camera.usbURL)
             if let host = camera.wifiAddress { compactURLRow("Remote · Wi-Fi", "http://\(host):8080/remote") }
             compactURLRow("Remote · USB", "http://127.0.0.1:18080/remote")
             compactURLRow("Remote password", camera.remoteKey)
