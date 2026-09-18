@@ -16,6 +16,10 @@ final class LayoutTests: XCTestCase {
 
         let preview = app.otherElements["camera.preview"]
         XCTAssertTrue(preview.waitForExistence(timeout: 10))
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = "Full-screen camera and safe-area controls"
+        attachment.lifetime = .keepAlways
+        add(attachment)
         let screen = XCUIScreen.main.screenshot().image.size
         let frame = preview.frame
         XCTAssertEqual(frame.width / frame.height, screen.width / screen.height, accuracy: 0.005,
@@ -33,9 +37,5 @@ final class LayoutTests: XCTestCase {
         XCTAssertLessThan(moon.frame.maxX, frame.maxX)
         XCTAssertTrue(app.buttons["FaceTrack"].isHittable)
         XCTAssertTrue(app.buttons["Settings"].isHittable)
-        let attachment = XCTAttachment(screenshot: app.screenshot())
-        attachment.name = "Full-screen camera and safe-area controls"
-        attachment.lifetime = .keepAlways
-        add(attachment)
     }
 }

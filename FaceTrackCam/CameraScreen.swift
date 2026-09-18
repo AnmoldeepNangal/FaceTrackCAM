@@ -76,9 +76,6 @@ struct CameraScreen: View {
     var body: some View {
         ZStack {
             preview.ignoresSafeArea()
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("Camera preview")
-                .accessibilityIdentifier("camera.preview")
                 .contentShape(Rectangle()).onTapGesture { dismissTools() }
             if showGrid { framingGrid.ignoresSafeArea().allowsHitTesting(false) }
             VStack(spacing: 8) {
@@ -173,6 +170,9 @@ struct CameraScreen: View {
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
             .clipped()
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Camera preview")
+            .accessibilityIdentifier("camera.preview")
         }
     }
 
