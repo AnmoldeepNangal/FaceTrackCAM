@@ -1,0 +1,93 @@
+name: Codex API Final Pass
+
+on:
+  workflow_dispatch:
+
+jobs:
+  generate_fix:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    outputs:
+      has_patch: ${{ steps.diff.outputs.has_patch }}
+
+    steps:
+      - name: Checkout FaceTrackCAM branch
+        uses: actions/checkout@v5
+        with:
+          ref: codex/mijick-obs-streaming
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Run Codex API
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          permission-profile: ":workspace"
+          prompt-file: .github/codex/prompts/final-pass.md
+          model: gpt-5.6-sol
+          effort: low
+          output-file: codex-result.md
+
+      - name: Create Codex patch
+        id: diff
+        run: |
+          git add -N .
+          git diff --binary HEAD > codex.patch
+
+          if [ -s codex.patch ]; then
+            echo "has_patch=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_patch=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload patch
+        if: steps.diff.outputs.has_patch == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: facetrack-codex-patch
+          path: codex.patch
+          if-no-files-found: error
+
+      - name: Upload Codex report
+        uses: actions/upload-artifact@v4
+        with:
+          name: facetrack-codex-report
+          path: codex-result.md
+          if-no-files-found: ignore
+
+
+  apply_fix:
+    needs: generate_fix
+    if: needs.generate_fix.outputs.has_patch == 'true'
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout FaceTrackCAM branch
+        uses: actions/checkout@v5
+        with:
+          ref: codex/mijick-obs-streaming
+          fetch-depth: 0
+
+      - name: Download Codex patch
+        uses: actions/download-artifact@v4
+        with:
+          name: facetrack-codex-patch
+
+      - name: Apply patch
+        run: |
+          git apply --index codex.patch
+
+      - name: Commit and push Codex changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git commit -m "Final FaceTrackCAM stabilization via Codex API"
+          git push origin HEAD:codex/mijick-obs-streaming
